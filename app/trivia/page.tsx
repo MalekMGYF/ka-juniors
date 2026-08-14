@@ -175,6 +175,25 @@ export default function TriviaPage() {
     }, 1800);
   }
 
+  async function nextQuestion() {
+    if (!question || selecting || !expired) return;
+    setSelecting(true);
+    setError("");
+    const res = await fetch("/api/trivia", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questionId: question.id, skipExpired: true })
+    });
+    const data = await res.json();
+    setSelecting(false);
+    if (!res.ok) {
+      setError(data.error || "حصل خطأ، جرب تاني");
+      return;
+    }
+    vibrate(HAPTIC.tap);
+    await loadQuestion();
+  }
+
   return (
     <AppShell
       nickname={me?.nickname}
@@ -274,8 +293,13 @@ export default function TriviaPage() {
               )}
 
               {!lastResult && expired && (
-                <div className="muted" style={{ marginTop: 16, textAlign: "center" }}>
-                  خلص الوقت على السؤال ده
+                <div style={{ marginTop: 16, textAlign: "center" }}>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    خلص الوقت على السؤال ده
+                  </div>
+                  <ShakeButton className="btn btn-gold" onClick={nextQuestion} disabled={selecting}>
+                    {selecting ? "جاري تحميل السؤال…" : "السؤال التالي ←"}
+                  </ShakeButton>
                 </div>
               )}
             </>
