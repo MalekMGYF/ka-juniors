@@ -135,9 +135,10 @@ export async function POST(request: NextRequest) {
       const wordSelection = await randomWordOptions(supabase);
       if (wordSelection.usesWordBank && wordSelection.words.length < 3) return noStoreJson({ error: "ضيف 3 كلمات على الأقل في بنك كلمات ارسم واتقال من صفحة الأدمن" }, { status: 409 });
       const drawerId = lobbyPlayers[0].user_id;
+      const { data: drawerUser } = await supabase.from("users").select("nickname").eq("id", drawerId).maybeSingle();
       const started = await supabase.from("pictionary_rooms").update({ status: "drawing", current_drawer_id: drawerId, current_word: null, word_options: wordSelection.words, round_number: 1, round_started_at: null, round_ends_at: null }).eq("id", room.id).eq("status", "waiting");
       if (started.error) return unavailable(started.error);
-      await broadcastPictionaryEvent(supabase, code, "game_started", { drawerId, roundNumber: 1, maxRounds: room.max_rounds || 5, playerCount: lobbyPlayers.length, wordOptions: wordSelection.words });
+      await broadcastPictionaryEvent(supabase, code, "game_started", { drawerId, drawerName: drawerUser?.nickname || "الرسام", roundNumber: 1, maxRounds: room.max_rounds || 5, playerCount: lobbyPlayers.length, wordOptions: wordSelection.words });
       return noStoreJson({ ok: true, drawerId, playerCount: lobbyPlayers.length, maxRounds: room.max_rounds || 5 });
     }
 
@@ -180,8 +181,9 @@ export async function POST(request: NextRequest) {
       const currentIndex = Math.max(0, lobbyPlayers.findIndex((player) => player.user_id === room.current_drawer_id));
       const drawerId = lobbyPlayers[(currentIndex + 1) % lobbyPlayers.length].user_id;
       const roundNumber = room.round_number + 1;
+      const { data: drawerUser } = await supabase.from("users").select("nickname").eq("id", drawerId).maybeSingle();
       await supabase.from("pictionary_rooms").update({ status: "drawing", current_drawer_id: drawerId, current_word: null, word_options: wordSelection.words, round_number: roundNumber, round_started_at: null, round_ends_at: null }).eq("id", room.id);
-      await broadcastPictionaryEvent(supabase, code, "game_started", { drawerId, roundNumber, maxRounds, playerCount: lobbyPlayers.length, wordOptions: wordSelection.words });
+      await broadcastPictionaryEvent(supabase, code, "game_started", { drawerId, drawerName: drawerUser?.nickname || "الرسام", roundNumber, maxRounds, playerCount: lobbyPlayers.length, wordOptions: wordSelection.words });
       return noStoreJson({ ok: true, drawerId, roundNumber, maxRounds });
     }
 
@@ -194,7 +196,7 @@ export async function POST(request: NextRequest) {
       const round = await supabase.from("pictionary_rounds").upsert({ room_id: room.id, round_number: room.round_number, drawer_id: session.userId, chosen_word: chosenWord, ends_at: endsAt, status: "drawing" }, { onConflict: "room_id,round_number" }).select("id").single();
       if (round.error) return unavailable(round.error);
       await supabase.from("pictionary_rooms").update({ status: "drawing", current_word: chosenWord, word_options: roomWords, round_started_at: new Date().toISOString(), round_ends_at: endsAt }).eq("id", room.id);
-      await broadcastPictionaryEvent(supabase, code, "round_started", { roundId: round.data.id, drawerId: session.userId, roundNumber: room.round_number, endsAt });
+      await broadcastPictionaryEvent(supabase, code, "round_started", { roundId: round.data.id, drawerId: session.userId, drawerName: session.nickname, roundNumber: room.round_number, endsAt });
       return noStoreJson({ ok: true, roundId: round.data.id });
     }
 
