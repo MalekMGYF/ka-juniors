@@ -232,16 +232,22 @@ export default function TriviaPage() {
                     borderRadius: 14,
                     border: "1px solid var(--border)",
                     background: "var(--bg-soft)",
+                    color: "var(--text)",
                     textAlign: "right",
-                    fontSize: 15
+                    fontSize: 15,
+                    fontFamily: "inherit",
+                    fontWeight: 700,
+                    cursor: "pointer"
                   };
                   if (showCorrect) {
                     style.border = "1px solid var(--mint)";
                     style.background = "rgba(124, 224, 192, 0.12)";
+                    style.color = "var(--mint)";
                   }
                   if (isMine && !showCorrect) {
                     style.border = "1px solid var(--coral)";
                     style.background = "rgba(255, 107, 107, 0.12)";
+                    style.color = "#ffd2d2";
                   }
                   return (
                     <button
