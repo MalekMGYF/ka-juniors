@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseServer } from "../../../lib/supabase";
 import { getSessionFromCookies } from "../../../lib/auth";
 import { noStoreJson } from "../../../lib/api-response";
+import { SCHOOLS } from "../../../lib/schools";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,12 +21,13 @@ export async function GET() {
     .eq("id", session.userId)
     .maybeSingle();
 
-  const { data: taps } = await supabase.from("cheer_taps").select("school");
-
-  const counts: Record<string, number> = {};
-  (taps || []).forEach((t) => {
-    counts[t.school] = (counts[t.school] || 0) + 1;
-  });
+  const schoolCounts = await Promise.all(
+    SCHOOLS.map(async ({ name }) => {
+      const { count, error } = await supabase.from("cheer_taps").select("id", { count: "exact", head: true }).eq("school", name);
+      return [name, error ? 0 : count || 0] as const;
+    })
+  );
+  const counts = Object.fromEntries(schoolCounts);
 
   return noStoreJson({ counts, mySchool: me?.school || null });
 }
@@ -48,10 +50,12 @@ export async function POST(req: NextRequest) {
     return noStoreJson({ error: "مفيش مدرسة مسجلة على حسابك" }, { status: 400 });
   }
 
-  await supabase.from("cheer_taps").insert({
+  const { error: insertError } = await supabase.from("cheer_taps").insert({
     school: me.school,
     user_id: session.userId
   });
+  if (insertError) return noStoreJson({ error: "حصل خطأ أثناء تسجيل التكبيس" }, { status: 500 });
 
-  return noStoreJson({ success: true });
+  const { count, error: countError } = await supabase.from("cheer_taps").select("id", { count: "exact", head: true }).eq("school", me.school);
+  return noStoreJson({ success: true, school: me.school, count: countError ? null : count || 0 });
 }
