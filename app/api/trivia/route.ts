@@ -54,13 +54,21 @@ export async function GET() {
     .eq("user_id", session.userId)
     .maybeSingle();
 
+  if (!myStart) {
+    return noStoreJson({
+      question: { id: question.id },
+      myStart: null,
+      serverNow: new Date().toISOString()
+    });
+  }
+
   return noStoreJson({
     question: {
       id: question.id,
       question_text: question.question_text,
       options: question.options
     },
-    myStart: myStart?.started_at || null,
+    myStart: myStart.started_at,
     serverNow: new Date().toISOString()
   });
 }
