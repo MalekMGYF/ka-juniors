@@ -71,8 +71,8 @@ export async function POST(req: NextRequest) {
     return noStoreJson({ error: "لازم تسجل دخول" }, { status: 401 });
   }
 
-  const { questionId, selectedIndex } = await req.json();
-  if (!questionId || typeof selectedIndex !== "number") {
+  const { questionId, selectedIndex, skipExpired } = await req.json();
+  if (!questionId || (!skipExpired && typeof selectedIndex !== "number")) {
     return noStoreJson({ error: "طلب غير صحيح" }, { status: 400 });
   }
 
@@ -112,6 +112,22 @@ export async function POST(req: NextRequest) {
 
   const startedAt = new Date(start.started_at).getTime();
   const elapsedMs = Date.now() - startedAt;
+
+  if (skipExpired) {
+    if (elapsedMs < ANSWER_WINDOW_MS) {
+      return noStoreJson({ error: "استنى لحد ما الوقت يخلص" }, { status: 409 });
+    }
+    const { error: skipError } = await supabase.from("trivia_answers").insert({
+      question_id: questionId,
+      user_id: session.userId,
+      selected_index: -1,
+      is_correct: false,
+      answer_ms: ANSWER_WINDOW_MS,
+      points_earned: 0
+    });
+    if (skipError) return noStoreJson({ error: "حصل خطأ، جرب تاني" }, { status: 500 });
+    return noStoreJson({ skipped: true });
+  }
 
   if (elapsedMs > ANSWER_WINDOW_MS + GRACE_MS) {
     return noStoreJson({ error: "خلصت العشر ثواني، فاتك السؤال ده" }, { status: 409 });
