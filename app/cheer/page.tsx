@@ -21,6 +21,7 @@ export default function CheerPage() {
   const [mySchool, setMySchool] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pop, setPop] = useState(false);
+  const [tapping, setTapping] = useState(false);
 
   async function load() {
     const [cRes, meRes] = await Promise.all([
@@ -42,11 +43,26 @@ export default function CheerPage() {
   }, []);
 
   async function tap() {
+    const school = mySchool;
+    if (!school || tapping) return;
+    setTapping(true);
     setPop(true);
     setTimeout(() => setPop(false), 220);
     vibrate(HAPTIC.tap);
-    setCounts((c) => ({ ...c, [mySchool || ""]: (c[mySchool || ""] || 0) + 1 }));
-    await fetch("/api/cheer", { method: "POST" });
+    setCounts((c) => ({ ...c, [school]: (c[school] || 0) + 1 }));
+    try {
+      const response = await fetch("/api/cheer", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) {
+        await load();
+        return;
+      }
+      if (typeof data.count === "number") setCounts((c) => ({ ...c, [school]: data.count }));
+    } catch {
+      await load();
+    } finally {
+      setTapping(false);
+    }
   }
 
   const ranked = SCHOOLS.map((s) => ({ ...s, count: counts[s.name] || 0 })).sort(
@@ -81,7 +97,7 @@ export default function CheerPage() {
             </div>
             <button
               onClick={tap}
-              disabled={!mySchool}
+              disabled={!mySchool || tapping}
               style={{
                 background: "none",
                 border: "none",
@@ -92,7 +108,7 @@ export default function CheerPage() {
                 lineHeight: 1
               }}
             >
-              ❤️
+              {tapping ? "💛" : "❤️"}
             </button>
             <div style={{ marginTop: 14, fontFamily: "Marhey, sans-serif", fontWeight: 700, fontSize: 22 }}>
               {counts[mySchool || ""] || 0}
