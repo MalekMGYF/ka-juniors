@@ -16,8 +16,8 @@ type Me = {
 
 type Question = {
   id: string;
-  question_text: string;
-  options: string[];
+  question_text?: string;
+  options?: string[];
 };
 
 type LeaderRow = {
@@ -132,9 +132,7 @@ export default function TriviaPage() {
     }
 
     vibrate(HAPTIC.tap);
-    setStarted(true);
-    setSecondsLeft(ANSWER_WINDOW_SECONDS);
-    setExpired(false);
+    await loadQuestion();
   }
 
   async function pick(index: number) {
@@ -230,8 +228,6 @@ export default function TriviaPage() {
             </div>
           )}
 
-          <h3 style={{ marginTop: 0, textAlign: "center" }}>{question.question_text}</h3>
-
           {error && <div className="error-text">{error}</div>}
 
           {!started ? (
@@ -242,8 +238,9 @@ export default function TriviaPage() {
             </div>
           ) : (
             <>
+              <h3 style={{ marginTop: 0, textAlign: "center" }}>{question.question_text}</h3>
               <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-                {question.options.map((opt, idx) => {
+                {(question.options || []).map((opt, idx) => {
                   const isMine = lastResult?.selectedIndex === idx;
                   const showCorrect = lastResult && lastResult.correctIndex === idx;
                   let style: React.CSSProperties = {
