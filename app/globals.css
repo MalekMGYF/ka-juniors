@@ -958,6 +958,16 @@ select.input {
 .pictionary-brushes button.active { color: var(--p-gold); border-color: rgba(245,185,66,.45); background: rgba(245,185,66,.08); }
 .pictionary-brushes i { display: block; background: currentColor; border-radius: 50%; }
 .pictionary-clear { margin-right: auto; padding: 8px 10px; color: var(--p-muted); background: transparent; border: 1px solid var(--p-border); border-radius: 8px; font-size: 10px; }
+.site-notice-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(5,5,8,.78); backdrop-filter: blur(8px); }
+.site-notice-card { width: min(420px, 100%); padding: 28px; text-align: center; color: var(--text); background: linear-gradient(145deg, rgba(30,29,34,.99), rgba(18,18,21,.99)); border: 1px solid rgba(248,190,66,.42); border-radius: 22px; box-shadow: 0 24px 80px rgba(0,0,0,.48), 0 0 0 7px rgba(248,190,66,.06); animation: pictionary-enter .25s cubic-bezier(.23,1,.32,1) both; }
+.site-notice-icon { display: grid; place-items: center; width: 46px; height: 46px; margin: 0 auto 13px; color: #2d1b02; background: var(--gold); border-radius: 50%; font: 900 24px/1 Cairo, sans-serif; }
+.site-notice-kicker { color: var(--gold); font-size: 12px; font-weight: 800; }
+.site-notice-card h2 { margin: 8px 0; font-family: Marhey, sans-serif; font-size: 23px; }
+.site-notice-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.9; white-space: pre-wrap; }
+.site-notice-acknowledge { width: 100%; margin-top: 22px; padding: 12px 16px; color: #2b1900; background: var(--gold); border: 0; border-radius: 14px; font: 800 15px Cairo, sans-serif; cursor: pointer; transition: transform .16s cubic-bezier(.23,1,.32,1), filter .16s ease; }
+.site-notice-acknowledge:hover { filter: brightness(1.05); }
+.site-notice-acknowledge:active { transform: scale(.97); }
+@media (max-width: 560px) { .site-notice-overlay { padding: 16px; } .site-notice-card { padding: 23px 18px; border-radius: 18px; } .site-notice-card h2 { font-size: 20px; } .site-notice-card p { font-size: 14px; } }
 .pictionary-clear:not(:disabled):hover { color: var(--p-coral); border-color: rgba(255,107,107,.4); }
 .pictionary-clear:disabled { opacity: .42; }
 .pictionary-tools > span { display: flex; gap: 5px; }
