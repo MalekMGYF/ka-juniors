@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseServer } from "../../../../lib/supabase";
 import { getAdminFromCookies } from "../../../../lib/auth";
 import { noStoreJson } from "../../../../lib/api-response";
-import { getSiteNoticeConfig } from "../../site-notice/route";
+import { getSiteNoticeConfig } from "../../../../lib/site-notice";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
