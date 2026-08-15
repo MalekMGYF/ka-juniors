@@ -105,11 +105,68 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
-  const { questionId, isActive } = await req.json().catch(() => ({}));
-  if (typeof questionId !== "string" || typeof isActive !== "boolean") return noStoreJson({ error: "طلب غير صحيح" }, { status: 400 });
-  const { error } = await supabaseServer().from("song_complete_questions").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", questionId);
-  if (error) return noStoreJson({ error: "حصل خطأ" }, { status: 500 });
-  return noStoreJson({ success: true });
+  const isMultipart = req.headers.get("content-type")?.includes("multipart/form-data");
+
+  if (!isMultipart) {
+    const { questionId, isActive } = await req.json().catch(() => ({}));
+    if (typeof questionId !== "string" || typeof isActive !== "boolean") return noStoreJson({ error: "طلب غير صحيح" }, { status: 400 });
+    const { error } = await supabaseServer().from("song_complete_questions").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", questionId);
+    if (error) return noStoreJson({ error: "حصل خطأ" }, { status: 500 });
+    return noStoreJson({ success: true });
+  }
+
+  const form = await req.formData();
+  const questionId = String(form.get("questionId") || "").trim();
+  const title = String(form.get("title") || "").trim();
+  const promptText = String(form.get("promptText") || "").trim();
+  const fullLine = String(form.get("fullLine") || "").trim();
+  const options = [0, 1, 2, 3].map((index) => String(form.get(`option${index}`) || "").trim());
+  const correctIndex = Number(form.get("correctIndex"));
+  const removeIntro = String(form.get("removeIntro") || "") === "true";
+  const removeFull = String(form.get("removeFull") || "") === "true";
+  const introAudio = form.get("introAudio");
+  const fullAudio = form.get("fullAudio");
+
+  if (!questionId || !title || !promptText || !fullLine || !promptText.includes("…")) return noStoreJson({ error: "اكتب العنوان والجملة وعلامة … مكان الجزء الناقص" }, { status: 400 });
+  if (options.some((option) => !option) || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3) return noStoreJson({ error: "اكتب الأربع اختيارات وحدد الإجابة الصح" }, { status: 400 });
+
+  const supabase = supabaseServer();
+  const { data: existing, error: existingError } = await supabase
+    .from("song_complete_questions")
+    .select("intro_audio_path, full_audio_path")
+    .eq("id", questionId)
+    .maybeSingle();
+  if (existingError || !existing) return noStoreJson({ error: "السؤال غير موجود" }, { status: 404 });
+
+  let uploadedIntro: string | null = null;
+  let uploadedFull: string | null = null;
+  try {
+    uploadedIntro = await uploadAudio(introAudio instanceof File ? introAudio : null, "intro", questionId);
+    uploadedFull = await uploadAudio(fullAudio instanceof File ? fullAudio : null, "full", questionId);
+    const nextIntro = removeIntro ? null : (uploadedIntro || existing.intro_audio_path);
+    const nextFull = removeFull ? null : (uploadedFull || existing.full_audio_path);
+    const { error } = await supabase.from("song_complete_questions").update({
+      title,
+      prompt_text: promptText,
+      full_line: fullLine,
+      options,
+      correct_index: correctIndex,
+      intro_audio_path: nextIntro,
+      full_audio_path: nextFull,
+      updated_at: new Date().toISOString()
+    }).eq("id", questionId);
+    if (error) throw new Error("تعذر حفظ تعديل السؤال");
+
+    const stalePaths = [
+      (uploadedIntro || removeIntro) && existing.intro_audio_path !== nextIntro ? existing.intro_audio_path : null,
+      (uploadedFull || removeFull) && existing.full_audio_path !== nextFull ? existing.full_audio_path : null
+    ];
+    await removeFiles(stalePaths);
+    return noStoreJson({ success: true });
+  } catch (error) {
+    await removeFiles([uploadedIntro, uploadedFull]);
+    return noStoreJson({ error: error instanceof Error ? error.message : "حصل خطأ أثناء حفظ التعديل" }, { status: 400 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
