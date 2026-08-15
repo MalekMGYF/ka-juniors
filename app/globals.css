@@ -1063,8 +1063,8 @@ select.input {
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
 /* Style reminder: lobby uses the same night sketch studio language, but shifts focus to room ownership, code sharing, and a clear ready-to-start state. */
-.pictionary-lobby-shell { min-height: calc(100vh - 170px); display: grid; place-items: center; padding: 42px 0 70px; }
-.pictionary-lobby { width: min(940px, 100%); padding: 24px; border: 1px solid rgba(244,242,236,.1); border-radius: 24px; background: radial-gradient(circle at 100% 0, rgba(245,185,66,.1), transparent 28rem), linear-gradient(145deg, rgba(23,23,27,.98), rgba(12,12,15,.98)); box-shadow: 0 26px 80px rgba(0,0,0,.3); animation: pictionary-enter .35s cubic-bezier(.23,1,.32,1) both; }
+.pictionary-lobby-shell { --p-bg: #08080a; --p-surface: #17171b; --p-surface-2: #1e1e23; --p-border: rgba(244,242,236,.09); --p-text: #f3f1ea; --p-muted: #9a9aa1; --p-gold: #f5b942; --p-mint: #7ce0c0; --p-coral: #ff6b6b; min-height: calc(100vh - 170px); display: grid; place-items: center; padding: 42px 0 70px; }
+.pictionary-lobby { width: min(940px, 100%); padding: 24px; color: var(--p-text); border: 1px solid rgba(244,242,236,.1); border-radius: 24px; background: radial-gradient(circle at 100% 0, rgba(245,185,66,.1), transparent 28rem), linear-gradient(145deg, rgba(23,23,27,.98), rgba(12,12,15,.98)); box-shadow: 0 26px 80px rgba(0,0,0,.3); animation: pictionary-enter .35s cubic-bezier(.23,1,.32,1) both; }
 .pictionary-lobby-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
 .pictionary-lobby-kicker { color: var(--p-gold); font-size: 11px; font-weight: 900; letter-spacing: .7px; }
 .pictionary-lobby h1 { margin: 8px 0 6px; font-family: "Marhey", sans-serif; font-size: clamp(27px, 4vw, 44px); }
