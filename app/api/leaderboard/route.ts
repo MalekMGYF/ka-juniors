@@ -9,7 +9,7 @@ export async function GET() {
   const supabase = supabaseServer();
   const { data, error } = await supabase
     .from("users")
-    .select("id, nickname, full_name, school, points, coins, avatar_url, daily_points, trivia_points")
+    .select("id, nickname, full_name, school, points, coins, avatar_url, daily_points, trivia_points, song_points")
     .order("points", { ascending: false })
     .order("coins", { ascending: false })
     .limit(1000);
