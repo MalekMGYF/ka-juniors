@@ -29,13 +29,12 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="center-page">
-      <div className="card" style={{ maxWidth: 380, width: "100%" }}>
-        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>
-          <span className="spark">✦</span>
-          لوحة التحكم
-        </div>
-        <p className="subtitle" style={{ textAlign: "center" }}>الصفحة دي خاصة بيك انت بس</p>
+    <div className="center-page login-gate admin-gate">
+      <div className="card login-gate-card" style={{ maxWidth: 380, width: "100%" }}>
+        <div className="login-gate-mark" aria-hidden="true"><span>✎</span><i>✦</i></div>
+        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>لوحة التحكم</div>
+        <h1>جهّز الجولة الجاية</h1>
+        <p className="subtitle" style={{ textAlign: "center" }}>هنا بتضيف التحديات وبتخلي اللعبة أحلى.</p>
 
         {error && <div className="error-text">{error}</div>}
 
