@@ -1271,6 +1271,14 @@ select.input {
 .song-clip-timeline div span { color: var(--muted); font-size: 8px; }
 .song-clip-timeline div b { color: var(--gold); font-size: 10px; direction: ltr; }
 .song-clip-timeline input[type=range] { width: 100%; accent-color: var(--gold); }
+.song-clip-time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
+.song-clip-time-fields label { display: grid; gap: 5px; padding: 10px; background: rgba(255,255,255,.025); border: 1px solid var(--border); border-radius: 10px; }
+.song-clip-time-fields label > span { color: var(--muted); font-size: 9px; font-weight: 800; }
+.song-clip-time-fields label > div { display: flex; align-items: center; gap: 6px; }
+.song-clip-time-fields input { min-width: 0; width: 100%; padding: 8px; color: var(--gold); background: rgba(7,7,9,.68); border: 1px solid rgba(245,185,66,.27); border-radius: 7px; outline: none; direction: ltr; font: 900 14px Cairo, sans-serif; text-align: center; }
+.song-clip-time-fields input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,185,66,.1); }
+.song-clip-time-fields b { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.song-clip-time-fields small { color: var(--mint); font-size: 9px; direction: ltr; }
 .song-clip-summary { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 9px; }
 .song-clip-summary b { color: var(--mint); direction: ltr; }
 .song-clip-actions, .song-edit-actions { display: flex; gap: 8px; margin-top: 13px; }
