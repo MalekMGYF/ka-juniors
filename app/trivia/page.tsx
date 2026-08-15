@@ -20,14 +20,6 @@ type Question = {
   options?: string[];
 };
 
-type LeaderRow = {
-  id: string;
-  nickname: string;
-  avatar_url?: string | null;
-  trivia_points: number;
-  equippedFrameColor?: string | null;
-};
-
 const ANSWER_WINDOW_SECONDS = 10;
 
 export default function TriviaPage() {
@@ -47,19 +39,12 @@ export default function TriviaPage() {
     coinsEarned: number;
     selectedIndex: number;
   } | null>(null);
-  const [leaders, setLeaders] = useState<LeaderRow[]>([]);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function loadMe() {
     const res = await fetch("/api/me", { cache: "no-store" });
     const data = await res.json();
     setMe(data.user);
-  }
-
-  async function loadLeaderboard() {
-    const res = await fetch("/api/trivia/leaderboard", { cache: "no-store" });
-    const data = await res.json();
-    setLeaders(data.players || []);
   }
 
   async function loadQuestion() {
@@ -89,7 +74,6 @@ export default function TriviaPage() {
 
   useEffect(() => {
     loadMe();
-    loadLeaderboard();
     loadQuestion();
   }, []);
 
@@ -165,7 +149,6 @@ export default function TriviaPage() {
       selectedIndex: index
     });
     loadMe();
-    loadLeaderboard();
 
     // بعد شوية، هاته السؤال اللي بعده تلقائي
     setTimeout(() => {
@@ -304,45 +287,6 @@ export default function TriviaPage() {
         </div>
       )}
 
-      <h3>🥇 مين الأذكي</h3>
-      {leaders.length === 0 ? (
-        <div className="card empty">لسه محدش كسب نقط في تحدي المعلومات</div>
-      ) : (
-        <div className="list">
-          {leaders.map((p, idx) => (
-            <div
-              key={p.id}
-              className="card card-tight"
-              style={{ display: "flex", alignItems: "center", gap: 12 }}
-            >
-              <div style={{ fontWeight: 900, width: 24, textAlign: "center" }}>
-                {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
-              </div>
-              <div
-                className="avatar"
-                style={{
-                  width: 36,
-                  height: 36,
-                  fontSize: 14,
-                  border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined
-                }}
-              >
-                {p.avatar_url ? (
-                  <img
-                    src={p.avatar_url}
-                    alt={p.nickname}
-                    style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                  />
-                ) : (
-                  p.nickname.trim().charAt(0)
-                )}
-              </div>
-              <div style={{ flex: 1, fontWeight: 700 }}>{p.nickname}</div>
-              <div style={{ color: "var(--gold)", fontWeight: 800 }}>{p.trivia_points} نقطة</div>
-            </div>
-          ))}
-        </div>
-      )}
     </AppShell>
   );
 }
