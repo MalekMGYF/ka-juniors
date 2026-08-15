@@ -9,6 +9,7 @@ type Props = {
   fullFile: File | null;
   onIntroFile: (file: File | null) => void;
   onFullFile: (file: File | null) => void;
+  saveHint?: string;
   disabled?: boolean;
 };
 
@@ -24,8 +25,9 @@ function formatTime(value: number) {
 }
 
 function makeWavFile(buffer: AudioBuffer, start: number, end: number, name: string) {
-  const sampleRate = 44100;
-  const outputChannels = Math.min(2, buffer.numberOfChannels);
+  // 22.05 kHz mono keeps a 55-second vocal clip safely under the 5 MB upload limit.
+  const sampleRate = 22050;
+  const outputChannels = 1;
   const sourceStart = Math.max(0, Math.floor(start * buffer.sampleRate));
   const sourceEnd = Math.min(buffer.length, Math.ceil(end * buffer.sampleRate));
   const sourceLength = Math.max(1, sourceEnd - sourceStart);
@@ -35,7 +37,7 @@ function makeWavFile(buffer: AudioBuffer, start: number, end: number, name: stri
   for (let index = 0; index < outputLength; index += 1) {
     const sourceIndex = Math.min(sourceEnd - 1, sourceStart + Math.floor((index / outputLength) * sourceLength));
     for (let channel = 0; channel < outputChannels; channel += 1) {
-      const sourceChannel = buffer.getChannelData(Math.min(channel, buffer.numberOfChannels - 1));
+      const sourceChannel = buffer.getChannelData(0);
       const sample = Math.max(-1, Math.min(1, sourceChannel[sourceIndex] || 0));
       output[index * outputChannels + channel] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
@@ -63,7 +65,7 @@ function makeWavFile(buffer: AudioBuffer, start: number, end: number, name: stri
   return new File([wav], name, { type: "audio/wav" });
 }
 
-export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, onFullFile, disabled = false }: Props) {
+export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, onFullFile, saveHint = "بعد كده اضغط حفظ السؤال عشان المقطع يترفع ويتربط بالسؤال.", disabled = false }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -76,6 +78,7 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState("");
+  const [savedTarget, setSavedTarget] = useState<ClipTarget | null>(null);
 
   useEffect(() => () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); }, [sourceUrl]);
 
@@ -92,6 +95,7 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
     stopPreview();
     setError("");
     setDecoded(null);
+    setSavedTarget(null);
     if (!file) return;
     if (!file.type.startsWith("audio/")) { setError("اختار ملف صوت فقط"); return; }
     if (file.size > MAX_SOURCE_BYTES) { setError("ملف الأغنية كبير جدًا للمحرر. اختار ملفًا أصغر من 24 ميجابايت."); return; }
@@ -157,6 +161,7 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
       if (file.size > MAX_UPLOAD_BYTES) { setError("المقطع الناتج أكبر من 5 ميجابايت. قص جزء أقصر."); return; }
       if (target === "intro") onIntroFile(file);
       else onFullFile(file);
+      setSavedTarget(target);
     } catch {
       setError("حصلت مشكلة أثناء تجهيز المقطع. جرّب جزء أقصر أو ملف MP3/WAV.");
     } finally {
@@ -169,6 +174,7 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
       <div className="song-clip-head"><div><span className="song-eyebrow">قص من الأغنية كاملة</span><h4>اختار الجزء اللي اللاعب هيسمعه</h4></div><span>🎧</span></div>
       <p>ارفع الأغنية هنا مرة واحدة، وحدد بداية ونهاية المقطع، واسمعه قبل ما تحفظه. المصدر لا يُرفع للسيرفر؛ اللي بيترفع هو الجزء اللي اخترته فقط.</p>
       {error && <div className="error-text">{error}</div>}
+      {savedTarget && <div className="song-clip-success">✓ اتجهز مقطع {savedTarget === "intro" ? "البداية" : "بعد الإجابة"} باسم <b>{savedTarget === "intro" ? introFile?.name : fullFile?.name}</b>. {saveHint}</div>}
       <label className="song-source-drop"><input type="file" accept="audio/*" disabled={disabled} onChange={(event) => void selectSource(event.target.files?.[0] || null)} /><b>{sourceFile ? sourceFile.name : "ارفع ملف الأغنية الكامل"}</b><small>MP3 / M4A / WAV — حتى 24 ميجابايت للمحرر</small></label>
       {sourceUrl && <div className="song-clip-controls">
         <audio ref={audioRef} src={sourceUrl} preload="metadata" onLoadedMetadata={() => void handleMetadata()} onTimeUpdate={onTimeUpdate} onEnded={() => setIsPreviewing(false)} />
@@ -180,7 +186,7 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
         <div className="song-clip-summary"><span>الجزء المختار: <b>{formatTime(start)} — {formatTime(end)}</b></span><small>{formatTime(Math.max(0, end - start))} من 55 ثانية كحد أقصى</small></div>
         <div className="song-clip-actions"><button type="button" className="btn btn-outline" onClick={isPreviewing ? stopPreview : previewClip} disabled={!duration || disabled}>{isPreviewing ? "أوقف المعاينة" : "▶ اسمع الجزء"}</button><button type="button" className="btn btn-gold" onClick={() => void saveClip()} disabled={!decoded || isPreparing || disabled}>{isPreparing ? "جاري تجهيز المقطع…" : `احفظ كمقطع ${target === "intro" ? "بداية" : "بعد الإجابة"}`}</button></div>
       </div>}
-      <div className="song-saved-clips"><span className={introFile ? "ready" : ""}>🎙️ {introFile ? `مقطع بداية جاهز (${formatTime(start)} تقريبًا)` : "مفيش مقطع بداية محفوظ"}{introFile && <button type="button" onClick={() => onIntroFile(null)}>×</button>}</span><span className={fullFile ? "ready" : ""}>✨ {fullFile ? `مقطع بعد الإجابة جاهز (${formatTime(start)} تقريبًا)` : "مفيش مقطع بعد الإجابة محفوظ"}{fullFile && <button type="button" onClick={() => onFullFile(null)}>×</button>}</span></div>
+      <div className="song-saved-clips"><span className={introFile ? "ready" : ""}>🎙️ {introFile ? `مقطع بداية جاهز: ${introFile.name}` : "مفيش مقطع بداية جاهز للإرسال"}{introFile && <button type="button" onClick={() => { onIntroFile(null); if (savedTarget === "intro") setSavedTarget(null); }}>×</button>}</span><span className={fullFile ? "ready" : ""}>✨ {fullFile ? `مقطع بعد الإجابة جاهز: ${fullFile.name}` : "مفيش مقطع بعد الإجابة جاهز للإرسال"}{fullFile && <button type="button" onClick={() => { onFullFile(null); if (savedTarget === "full") setSavedTarget(null); }}>×</button>}</span></div>
     </section>
   );
 }
