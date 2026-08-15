@@ -13,11 +13,17 @@ type Player = {
   school: string;
   points: number;
   daily_points: number;
+  trivia_points?: number;
   coins: number;
   avatar_url?: string | null;
   equippedTitle?: string | null;
   equippedFrameColor?: string | null;
   pictionary_points?: number;
+  cheer_taps?: number;
+  memory_plays?: number;
+  wheel_spins?: number;
+  activity_points?: number;
+  general_score?: number;
 };
 
 type Me = {
@@ -88,9 +94,8 @@ export default function LeaderboardPage() {
     return `${name} عمل حاجة حلوة`;
   }
 
-  const sortedOverall = [...players].sort(
-    (a, b) => (b.points + b.daily_points) - (a.points + a.daily_points)
-  );
+  const generalScore = (player: Player) => player.general_score || 0;
+  const sortedOverall = [...players].sort((a, b) => generalScore(b) - generalScore(a));
   const sortedGame = [...players].sort((a, b) => b.points - a.points);
   const sortedCoins = [...players].sort((a, b) => b.coins - a.coins);
   const sortedPictionary = [...players]
@@ -99,7 +104,7 @@ export default function LeaderboardPage() {
 
   const schoolMap = new Map<string, { total: number; count: number }>();
   players.forEach((p) => {
-    const total = p.points + p.daily_points;
+    const total = generalScore(p);
     const entry = schoolMap.get(p.school) || { total: 0, count: 0 };
     entry.total += total;
     entry.count += 1;
@@ -114,7 +119,7 @@ export default function LeaderboardPage() {
   }
 
   function renderPlayerRow(p: Player, i: number, showValue: number, icon: string = "⭐") {
-    const level = getLevel(p.points + p.daily_points);
+    const level = getLevel(tab === "overall" ? generalScore(p) : p.points + p.daily_points);
     const schoolColor = getSchoolColor(p.school);
     return (
       <div
@@ -178,7 +183,7 @@ export default function LeaderboardPage() {
           </span>
           {tab === "overall" && (
             <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-              {p.points} خمن + {p.daily_points} يومي
+              {p.points} ألعاب + {p.daily_points} يومي + {p.trivia_points || 0} معلومات + {p.activity_points || 0} تفاعل
             </div>
           )}
         </div>
@@ -223,7 +228,7 @@ export default function LeaderboardPage() {
           style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
           onClick={() => setTab("game")}
         >
-          خمن الطالب
+          نقاط اللعب
         </button>
         <button
           className={tab === "pictionary" ? "nav-link active" : "nav-link"}
@@ -297,7 +302,7 @@ export default function LeaderboardPage() {
           <div className="empty">محدش اتصدر لسه، يلا العب واحجز مكانك</div>
         ) : tab === "overall" ? (
           <div className="list">
-            {sortedOverall.map((p, i) => renderPlayerRow(p, i, p.points + p.daily_points))}
+            {sortedOverall.map((p, i) => renderPlayerRow(p, i, generalScore(p)))}
           </div>
         ) : tab === "game" ? (
           <div className="list">{sortedGame.map((p, i) => renderPlayerRow(p, i, p.points))}</div>
