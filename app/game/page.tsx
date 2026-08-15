@@ -1,3 +1,4 @@
+// Style reminder: this game is one calm challenge at a time—large readable clue, deliberate actions, and clear progress without a wall of questions.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -29,6 +30,7 @@ export default function GamePage() {
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [skipConfirmId, setSkipConfirmId] = useState<string | null>(null);
 
   async function load() {
     const [qRes, meRes] = await Promise.all([
@@ -67,23 +69,34 @@ export default function GamePage() {
       setMessages((m) => ({ ...m, [id]: "إجابة صح! +5 كوين و+1 نقطة" }));
       vibrate(HAPTIC.win);
       setMe((prev) => (prev ? { ...prev, points: data.points, coins: data.coins } : prev));
+      setBusy(id);
       setTimeout(() => {
-        setQuestions((qs) => qs.filter((q) => q.id !== id));
+        moveToNextQuestion(id);
+        setBusy(null);
       }, 900);
     } else {
-      setMessages((m) => ({ ...m, [id]: "إجابة غلط، جرب تاني" }));
+      setMessages((m) => ({ ...m, [id]: "إجابة غلط — السؤال اللي بعده جاي" }));
+      setBusy(id);
+      setTimeout(() => void skipQuestion(id), 850);
     }
+  }
+
+  function moveToNextQuestion(id: string) {
+    setQuestions((qs) => qs.filter((q) => q.id !== id));
+    setGuesses((g) => { const next = { ...g }; delete next[id]; return next; });
+    setMessages((m) => { const next = { ...m }; delete next[id]; return next; });
   }
 
   async function skipQuestion(id: string) {
     setBusy(id);
-    await fetch("/api/skip", {
+    const res = await fetch("/api/skip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ questionId: id })
     });
     setBusy(null);
-    setQuestions((qs) => qs.filter((q) => q.id !== id));
+    if (!res.ok) { setMessages((m) => ({ ...m, [id]: "حصلت مشكلة، جرب تاني" })); return; }
+    moveToNextQuestion(id);
   }
 
   async function unlockHint(id: string) {
@@ -126,14 +139,16 @@ export default function GamePage() {
         </div>
       </div>
 
+      {skipConfirmId && <div className="guess-confirm-overlay" role="dialog" aria-modal="true"><div className="guess-confirm-card"><span>⏭️</span><h3>متأكد عايز تخطي السؤال؟</h3><p>السؤال ده هيتسجل متخطي ومش هيظهر لك تاني.</p><div><ShakeButton className="btn btn-outline" onClick={() => setSkipConfirmId(null)}>لا، كمّل السؤال</ShakeButton><ShakeButton className="btn btn-gold" onClick={() => { const id = skipConfirmId; setSkipConfirmId(null); void skipQuestion(id); }}>أيوه، تخطي</ShakeButton></div></div></div>}
       {loading ? (
         <div className="card empty">جاري التحميل...</div>
       ) : questions.length === 0 ? (
         <div className="card empty">مفيش أسئلة دلوقتي، تابعنا هيتضاف قريب</div>
       ) : (
         <div className="list">
-          {questions.map((q) => (
-            <div className="card" key={q.id}>
+          {questions.slice(0, 1).map((q) => (
+            <div className="card guess-student-card" key={q.id}>
+              <div className="guess-student-counter">سؤال واحد في كل مرة</div>
               <p style={{ marginTop: 0, fontSize: 17 }}>{q.description}</p>
 
               {q.hintUnlocked && q.hint && (
@@ -185,7 +200,7 @@ export default function GamePage() {
                 )}
                 <ShakeButton
                   className="btn btn-outline"
-                  onClick={() => skipQuestion(q.id)}
+                  onClick={() => setSkipConfirmId(q.id)}
                   disabled={busy === q.id}
                 >
                   تخطي ⏭️
