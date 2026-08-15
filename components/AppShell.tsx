@@ -59,6 +59,7 @@ export default function AppShell({
     { href: "/wheel", label: "عجلة الحظ", icon: "🎡" },
     { href: "/memory", label: "تحدي الذاكرة", icon: "🧠" },
     { href: "/trivia", label: "تحدي المعلومات", icon: "❓" },
+    { href: "/songs", label: "كمل الأغنية", icon: "🎤" },
     { href: "/pictionary", label: "ارسم واتقال", icon: "✎" },
     { href: "/mafioso", label: "مافيوسو", icon: "🕵️" }
   ];
@@ -71,8 +72,8 @@ export default function AppShell({
     <div className="page">
       <div className="topbar">
         <div className="logo-mark">
-          <span className="spark">✦</span>
-          K.A Juniors
+          <span className="ka-game-mark" aria-hidden="true"><i>✎</i><b>✦</b></span>
+          <span>K.A Juniors</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {onlineCount !== null && (
