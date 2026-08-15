@@ -1583,7 +1583,7 @@ export default function AdminPage() {
                 <div className="field"><label>مقطع قبل الإجابة (اختياري)</label><input key={`intro-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongIntroFile(e.target.files?.[0] || null)} /><small className="muted">MP3 أو M4A أو WAV أو AAC أو OGG، حتى 5 ميجابايت.</small></div>
                 <div className="field"><label>المقطع الكامل بعد الإجابة (اختياري)</label><input key={`full-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongFullFile(e.target.files?.[0] || null)} /><small className="muted">يتشغل تلقائيًا بعد النتيجة لو تم رفعه.</small></div>
               </div>
-              <SongAudioClipEditor key={`create-clip-${songFileReset}`} introFile={songIntroFile} fullFile={songFullFile} onIntroFile={setSongIntroFile} onFullFile={setSongFullFile} disabled={songBusy} />
+              <SongAudioClipEditor key={`create-clip-${songFileReset}`} introFile={songIntroFile} fullFile={songFullFile} onIntroFile={setSongIntroFile} onFullFile={setSongFullFile} saveHint="بعد كده اضغط «أضف سؤال كمل الأغنية»؛ وقتها المقطع هيرتفع ويتربط بالسؤال." disabled={songBusy} />
               <ShakeButton className="btn btn-gold" onClick={createSong} disabled={songBusy}>{songBusy ? "جاري الحفظ والرفع…" : "أضف سؤال كمل الأغنية"}</ShakeButton>
             </div>
             <h3>أسئلة كمل الأغنية الحالية ({songQuestions.length})</h3>
@@ -1621,7 +1621,7 @@ export default function AdminPage() {
                 <div className="field"><label>استبدل مقطع البداية مباشرة (اختياري)</label><input key={`edit-intro-${editSongFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => { setEditSongIntroFile(e.target.files?.[0] || null); setEditRemoveIntro(false); }} /></div>
                 <div className="field"><label>استبدل مقطع بعد الإجابة مباشرة (اختياري)</label><input key={`edit-full-${editSongFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => { setEditSongFullFile(e.target.files?.[0] || null); setEditRemoveFull(false); }} /></div>
               </div>
-              <SongAudioClipEditor key={`edit-clip-${editSongFileReset}`} introFile={editSongIntroFile} fullFile={editSongFullFile} onIntroFile={(file) => { setEditSongIntroFile(file); if (file) setEditRemoveIntro(false); }} onFullFile={(file) => { setEditSongFullFile(file); if (file) setEditRemoveFull(false); }} disabled={editSongBusy} />
+              <SongAudioClipEditor key={`edit-clip-${editSongFileReset}`} introFile={editSongIntroFile} fullFile={editSongFullFile} onIntroFile={(file) => { setEditSongIntroFile(file); if (file) setEditRemoveIntro(false); }} onFullFile={(file) => { setEditSongFullFile(file); if (file) setEditRemoveFull(false); }} saveHint="بعد كده اضغط «احفظ التعديلات»؛ وقتها المقطع هيرتفع ويتربط بالسؤال." disabled={editSongBusy} />
               <div className="song-edit-actions"><button type="button" className="btn btn-outline" onClick={closeSongEdit} disabled={editSongBusy}>إلغاء</button><ShakeButton className="btn btn-gold" onClick={saveSongEdit} disabled={editSongBusy}>{editSongBusy ? "جاري حفظ التعديل…" : "احفظ التعديلات"}</ShakeButton></div>
             </div>
           </div>
