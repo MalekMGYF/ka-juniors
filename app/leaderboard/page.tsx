@@ -1,7 +1,7 @@
 // Style reminder: ranking is a focused midnight scoreboard; each category is a clear, tappable lane with gold reserved for achievement and mint for live intelligence.
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import { getLevel } from "../../lib/levels";
@@ -45,6 +45,15 @@ type EventItem = {
 };
 
 type SmartPlayer = { id: string; nickname: string; avatar_url?: string | null; trivia_points: number; equippedFrameColor?: string | null };
+
+type RankingProfile = {
+  id: string;
+  nickname: string;
+  school?: string;
+  avatar_url?: string | null;
+  equippedTitle?: string | null;
+  equippedFrameColor?: string | null;
+};
 
 type Tab = "overall" | "game" | "trivia" | "pictionary" | "coins" | "schools" | "weekly";
 
@@ -125,77 +134,62 @@ export default function LeaderboardPage() {
     router.push(`/profile/${encodeURIComponent(nickname)}`);
   }
 
-  function renderPlayerRow(p: Player, i: number, showValue: number, icon: string = "⭐") {
-    const level = getLevel(tab === "overall" ? generalScore(p) : p.points + p.daily_points);
-    const schoolColor = getSchoolColor(p.school);
+  function renderRankingCard(
+    p: RankingProfile,
+    i: number,
+    value: number,
+    icon: string,
+    valueLabel: string,
+    details: ReactNode,
+    level?: { icon: string; name: string; color: string }
+  ) {
+    const schoolColor = p.school ? getSchoolColor(p.school) : undefined;
+    const isCurrentPlayer = p.nickname === me?.nickname;
     return (
-      <div
+      <button
+        type="button"
         key={p.nickname}
-        className="row"
-        style={{
-          cursor: "pointer",
-          borderColor: p.nickname === me?.nickname ? "var(--gold)" : undefined
-        }}
+        className={`leaderboard-player-card rank-card-${Math.min(i + 1, 4)}${isCurrentPlayer ? " is-current-player" : ""}`}
         onClick={() => goToProfile(p.nickname)}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="leaderboard-rank-wrap">
           <span className={rankClass(i)}>{i + 1}</span>
-          {p.avatar_url ? (
-            <img
-              src={p.avatar_url}
-              alt={p.nickname}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined
-              }}
-            />
-          ) : (
-            <div
-              className="avatar"
-              style={{
-                width: 34,
-                height: 34,
-                fontSize: 14,
-                border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined
-              }}
-            >
-              {p.nickname.charAt(0)}
-            </div>
-          )}
-          <div>
-            <div style={{ fontWeight: 700 }}>
-              {p.nickname}{" "}
-              <span style={{ fontSize: 10, color: level.color, fontWeight: 700 }}>
-                {level.icon} {level.name}
-              </span>
-              {p.equippedTitle && (
-                <span style={{ fontSize: 10, color: "var(--gold)", fontWeight: 700 }}>
-                  {" "}
-                  ✦ {p.equippedTitle}
-                </span>
-              )}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-              <span className="school-dot" style={{ background: schoolColor }} />
-              <span className="muted" style={{ fontSize: 11 }}>{p.school}</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ textAlign: "left" }}>
-          <span className={icon === "🪙" ? "badge badge-coin" : "badge badge-point"}>
-            {icon} {showValue}
+          <small>{i === 0 ? "القمة" : i < 3 ? "الأوائل" : "المركز"}</small>
+        </span>
+        <span className="leaderboard-player-copy">
+          <span className="leaderboard-card-avatar" style={{ borderColor: p.equippedFrameColor || (i === 0 ? "var(--gold)" : undefined) }}>
+            {p.avatar_url ? <img src={p.avatar_url} alt="" /> : p.nickname.charAt(0)}
           </span>
-          {tab === "overall" && (
-            <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-              {p.points} ألعاب + {p.daily_points} يومي + {p.trivia_points || 0} معلومات + {p.activity_points || 0} تفاعل
-            </div>
-          )}
-        </div>
-      </div>
+          <span className="leaderboard-player-text">
+            <span className="leaderboard-player-name">
+              <strong>{p.nickname}</strong>
+              {isCurrentPlayer && <em>أنت</em>}
+            </span>
+            <span className="leaderboard-player-meta">
+              {level && <span style={{ color: level.color }}>{level.icon} {level.name}</span>}
+              {p.equippedTitle && <span className="leaderboard-title-tag">✦ {p.equippedTitle}</span>}
+              {p.school && <span><i className="school-dot" style={{ background: schoolColor }} />{p.school}</span>}
+            </span>
+            <span className="leaderboard-card-detail">{details}</span>
+          </span>
+        </span>
+        <span className="leaderboard-card-score">
+          <span>{icon}</span>
+          <strong>{value}</strong>
+          <small>{valueLabel}</small>
+        </span>
+        <span className="leaderboard-card-open" aria-hidden="true">‹</span>
+      </button>
     );
+  }
+
+  function renderPlayerRow(p: Player, i: number, showValue: number, icon: string = "⭐") {
+    const level = getLevel(tab === "overall" ? generalScore(p) : p.points + p.daily_points);
+    const valueLabel = icon === "🪙" ? "كوين" : tab === "pictionary" ? "نقاط رسم" : tab === "overall" ? "درجة عامة" : "نقطة";
+    const details = tab === "overall"
+      ? <><span>🎮 {p.points} ألعاب</span><span>☀ {p.daily_points} يومي</span><span>🧠 {p.trivia_points || 0} معلومات</span><span>🔥 {p.activity_points || 0} تفاعل</span></>
+      : <span>دوس لعرض البروفايل الكامل</span>;
+    return renderRankingCard(p, i, showValue, icon, valueLabel, details, level);
   }
 
   return (
@@ -206,8 +200,9 @@ export default function LeaderboardPage() {
       dailyPoints={me?.daily_points}
       avatarUrl={me?.avatar_url} frameColor={me?.equippedFrameColor}
     >
-      <div className="title-row">
+      <div className="title-row leaderboard-title-row">
         <div>
+          <span className="leaderboard-kicker">لوحة الشرف</span>
           <h2 style={{ margin: 0 }}>الترتيب</h2>
           <p className="subtitle" style={{ marginBottom: 0 }}>
             دوس على أي اسم عشان تشوف بروفايله كامل
@@ -222,59 +217,52 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+      <div className="leaderboard-tabs" role="tablist" aria-label="أنواع الترتيب">
         <button
-          className={tab === "overall" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "overall" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("overall")}
         >
           الترتيب العام
         </button>
         <button
-          className={tab === "game" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "game" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("game")}
         >
           نقاط اللعب
         </button>
         <button
-          className={tab === "trivia" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "trivia" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("trivia")}
         >
           مين الأذكى 🧠
         </button>
         <button
-          className={tab === "pictionary" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "pictionary" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("pictionary")}
         >
           الرسّام ✎
         </button>
         <button
-          className={tab === "coins" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "coins" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("coins")}
         >
           الأغنى
         </button>
         <button
-          className={tab === "schools" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "schools" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("schools")}
         >
           أفضل مدرسة
         </button>
         <button
-          className={tab === "weekly" ? "nav-link active" : "nav-link"}
-          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          className={tab === "weekly" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("weekly")}
         >
           الأكثر تفاعلاً 🔥
         </button>
       </div>
 
-      <div className="card card-tight">
+      <div className="leaderboard-panel">
         {loading ? (
           <div className="empty">جاري التحميل...</div>
         ) : tab === "weekly" ? (
@@ -282,41 +270,14 @@ export default function LeaderboardPage() {
             <div className="empty">مفيش نشاط الأسبوع ده لسه</div>
           ) : (
             <div className="list">
-              {weeklyPlayers.map((p, i) => (
-                <div
-                  className="row"
-                  key={p.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => goToProfile(p.nickname)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span className={rankClass(i)}>{i + 1}</span>
-                    {p.avatar_url ? (
-                      <img
-                        src={p.avatar_url}
-                        alt={p.nickname}
-                        style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <div className="avatar" style={{ width: 34, height: 34, fontSize: 14 }}>
-                        {p.nickname.charAt(0)}
-                      </div>
-                    )}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{p.nickname}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>{p.school}</div>
-                    </div>
-                  </div>
-                  <span className="badge badge-point">🔥 {p.weeklyScore}</span>
-                </div>
-              ))}
+              {weeklyPlayers.map((p, i) => renderRankingCard(p, i, p.weeklyScore, "🔥", "نشاط أسبوعي", <span>دوس لعرض البروفايل الكامل</span>))}
             </div>
           )
         ) : tab === "trivia" ? (
           smartPlayers.length === 0 ? (
             <div className="empty">مفيش نقاط تحدي معلومات لسه — أول إجابة صح هتظهر هنا.</div>
           ) : (
-            <div className="list">{smartPlayers.map((p, i) => <div className="row" key={p.id} style={{ cursor: "pointer", borderColor: p.nickname === me?.nickname ? "var(--gold)" : undefined }} onClick={() => goToProfile(p.nickname)}><div style={{ display: "flex", alignItems: "center", gap: 12 }}><span className={rankClass(i)}>{i + 1}</span>{p.avatar_url ? <img src={p.avatar_url} alt={p.nickname} style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined }} /> : <div className="avatar" style={{ width: 34, height: 34, fontSize: 14, border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined }}>{p.nickname.charAt(0)}</div>}<div><div style={{ fontWeight: 700 }}>{p.nickname}</div><div className="muted" style={{ fontSize: 11 }}>تحدي المعلومات</div></div></div><span className="badge badge-point">🧠 {p.trivia_points}</span></div>)}</div>
+            <div className="list">{smartPlayers.map((p, i) => renderRankingCard(p, i, p.trivia_points, "🧠", "نقطة ذكاء", <span>تحدي المعلومات · دوس لعرض البروفايل</span>))}</div>
           )
         ) : players.length === 0 ? (
           <div className="empty">محدش اتصدر لسه، يلا العب واحجز مكانك</div>
@@ -339,16 +300,10 @@ export default function LeaderboardPage() {
         ) : (
           <div className="list">
             {schools.map((s, i) => (
-              <div className="row" key={s.school}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span className={rankClass(i)}>{i + 1}</span>
-                  <span className="school-dot" style={{ background: getSchoolColor(s.school) }} />
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{s.school}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{s.count} طالب مسجل</div>
-                  </div>
-                </div>
-                <span className="badge badge-point">⭐ {s.total}</span>
+              <div className={`leaderboard-school-card rank-card-${Math.min(i + 1, 4)}`} key={s.school}>
+                <span className="leaderboard-rank-wrap"><span className={rankClass(i)}>{i + 1}</span><small>{i === 0 ? "القمة" : "مدرسة"}</small></span>
+                <span className="leaderboard-school-copy"><span className="leaderboard-school-mark" style={{ background: getSchoolColor(s.school) }} /> <span><strong>{s.school}</strong><small>{s.count} طالب مسجل</small></span></span>
+                <span className="leaderboard-card-score"><span>⭐</span><strong>{s.total}</strong><small>درجة عامة</small></span>
               </div>
             ))}
           </div>
