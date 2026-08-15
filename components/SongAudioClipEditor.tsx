@@ -120,15 +120,18 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
   }
 
   function updateStart(value: number) {
-    const capped = Math.min(value, Math.max(0, end - 0.5));
-    setStart(capped);
+    if (!Number.isFinite(value)) return;
+    const normalized = Math.max(0, Math.min(duration, value));
+    const capped = Math.min(normalized, Math.max(0, end - 0.5));
+    setStart(Math.round(capped * 10) / 10);
   }
 
   function updateEnd(value: number) {
+    if (!Number.isFinite(value)) return;
     const minEnd = start + 0.5;
     const capped = Math.min(duration, Math.max(minEnd, value));
-    if (capped - start > MAX_CLIP_SECONDS) setStart(Math.max(0, capped - MAX_CLIP_SECONDS));
-    setEnd(capped);
+    if (capped - start > MAX_CLIP_SECONDS) setStart(Math.round(Math.max(0, capped - MAX_CLIP_SECONDS) * 10) / 10);
+    setEnd(Math.round(capped * 10) / 10);
   }
 
   function previewClip() {
@@ -170,7 +173,10 @@ export default function SongAudioClipEditor({ introFile, fullFile, onIntroFile, 
       {sourceUrl && <div className="song-clip-controls">
         <audio ref={audioRef} src={sourceUrl} preload="metadata" onLoadedMetadata={() => void handleMetadata()} onTimeUpdate={onTimeUpdate} onEnded={() => setIsPreviewing(false)} />
         <div className="song-clip-targets"><button type="button" className={target === "intro" ? "active" : ""} onClick={() => setTarget("intro")}>1. مقطع قبل الإجابة</button><button type="button" className={target === "full" ? "active" : ""} onClick={() => setTarget("full")}>2. مقطع بعد الإجابة</button></div>
-        <div className="song-clip-timeline"><div><span>البداية</span><b>{formatTime(start)}</b></div><input type="range" min="0" max={duration || 0} step="0.1" value={start} onChange={(event) => updateStart(Number(event.target.value))} /><div><span>النهاية</span><b>{formatTime(end)}</b></div><input type="range" min="0" max={duration || 0} step="0.1" value={end} onChange={(event) => updateEnd(Number(event.target.value))} /></div>
+        <div className="song-clip-time-fields">
+          <label><span>بداية المقطع</span><div><input type="number" inputMode="decimal" min="0" max={Math.max(0, end - 0.5)} step="0.1" value={Number(start.toFixed(1))} onChange={(event) => updateStart(Number(event.target.value))} disabled={disabled} /><b>ثانية</b></div><small>{formatTime(start)}</small></label>
+          <label><span>نهاية المقطع</span><div><input type="number" inputMode="decimal" min={start + 0.5} max={duration || undefined} step="0.1" value={Number(end.toFixed(1))} onChange={(event) => updateEnd(Number(event.target.value))} disabled={disabled} /><b>ثانية</b></div><small>{formatTime(end)}</small></label>
+        </div>
         <div className="song-clip-summary"><span>الجزء المختار: <b>{formatTime(start)} — {formatTime(end)}</b></span><small>{formatTime(Math.max(0, end - start))} من 55 ثانية كحد أقصى</small></div>
         <div className="song-clip-actions"><button type="button" className="btn btn-outline" onClick={isPreviewing ? stopPreview : previewClip} disabled={!duration || disabled}>{isPreviewing ? "أوقف المعاينة" : "▶ اسمع الجزء"}</button><button type="button" className="btn btn-gold" onClick={() => void saveClip()} disabled={!decoded || isPreparing || disabled}>{isPreparing ? "جاري تجهيز المقطع…" : `احفظ كمقطع ${target === "intro" ? "بداية" : "بعد الإجابة"}`}</button></div>
       </div>}
