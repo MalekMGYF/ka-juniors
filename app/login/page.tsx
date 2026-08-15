@@ -35,13 +35,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="center-page">
-      <div className="card" style={{ maxWidth: 400, width: "100%" }}>
-        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>
-          <span className="spark">✦</span>
-          K.A Juniors
-        </div>
-        <p className="subtitle" style={{ textAlign: "center" }}>سجل دخولك</p>
+    <div className="center-page login-gate">
+      <div className="card login-gate-card" style={{ maxWidth: 400, width: "100%" }}>
+        <div className="login-gate-mark" aria-hidden="true"><span>✎</span><i>✦</i></div>
+        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>K.A Juniors</div>
+        <h1>ارجع للملعب</h1>
+        <p className="subtitle" style={{ textAlign: "center" }}>سجل دخولك وخلي اسمك يلمع في الترتيب.</p>
 
         {error && <div className="error-text">{error}</div>}
 
@@ -69,7 +68,7 @@ export default function LoginPage() {
         </ShakeButton>
 
         <p className="subtitle" style={{ textAlign: "center", marginTop: 16, marginBottom: 0 }}>
-          لسه مسجلتش؟ <a href="/register" style={{ color: "var(--gold)" }}>اعمل حساب</a>
+          لسه مسجلتش؟ <a href="/register" style={{ color: "var(--gold)" }}>اعمل حساب وخد مكانك</a>
         </p>
       </div>
     </div>
