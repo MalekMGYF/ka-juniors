@@ -1,3 +1,4 @@
+// Style reminder: profile shortcuts are a compact personal control panel—only distinct destinations appear here, with balanced touch targets on mobile.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -306,7 +307,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <div className="profile-quick-links">
             <a href="/levels" className="btn btn-outline" style={{ textAlign: "center" }}>
               🏅 المستويات
             </a>
@@ -316,17 +317,8 @@ export default function ProfilePage() {
             <a href="/shop" className="btn btn-outline" style={{ textAlign: "center" }}>
               🛍️ المتجر
             </a>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
             <a href="/auction" className="btn btn-outline" style={{ textAlign: "center" }}>
               🏺 المزاد
-            </a>
-            <a href="/memory" className="btn btn-outline" style={{ textAlign: "center" }}>
-              🧠 تحدي الذاكرة
-            </a>
-            <a href="/wheel" className="btn btn-outline" style={{ textAlign: "center" }}>
-              🎡 عجلة الحظ
             </a>
           </div>
 
