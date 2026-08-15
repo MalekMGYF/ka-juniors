@@ -79,7 +79,7 @@ type PictionaryWordRow = {
 
 export default function AdminPage() {
   const [tab, setTab] = useState<
-    "questions" | "users" | "daily" | "launch" | "auction" | "cheer" | "trivia" | "pictionaryWords"
+    "questions" | "users" | "daily" | "launch" | "notice" | "auction" | "cheer" | "trivia" | "pictionaryWords"
   >("questions");
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -110,6 +110,14 @@ export default function AdminPage() {
   const [launchBusy, setLaunchBusy] = useState(false);
   const [launchError, setLaunchError] = useState("");
   const [launchSuccess, setLaunchSuccess] = useState("");
+
+  const [noticeMessage, setNoticeMessage] = useState("");
+  const [noticeButtonLabel, setNoticeButtonLabel] = useState("تمام");
+  const [noticeEnabled, setNoticeEnabled] = useState(false);
+  const [noticeLoading, setNoticeLoading] = useState(true);
+  const [noticeBusy, setNoticeBusy] = useState(false);
+  const [noticeError, setNoticeError] = useState("");
+  const [noticeSuccess, setNoticeSuccess] = useState("");
 
   const [auctions, setAuctions] = useState<AuctionRow[]>([]);
   const [auctionLoading, setAuctionLoading] = useState(true);
@@ -193,6 +201,30 @@ export default function AdminPage() {
     }
     setLaunchSuccess("اتلغى العداد، الموقع شغال عادي دلوقتي");
     loadLaunch();
+  }
+
+  async function loadNotice() {
+    setNoticeLoading(true);
+    const res = await fetch("/api/admin/site-notice", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.notice) {
+      setNoticeMessage(data.notice.message || "");
+      setNoticeButtonLabel(data.notice.buttonLabel || "تمام");
+      setNoticeEnabled(data.notice.enabled === true);
+    } else setNoticeError(data.error || "حصل خطأ أثناء تحميل التنبيه");
+    setNoticeLoading(false);
+  }
+
+  async function saveNotice() {
+    setNoticeError(""); setNoticeSuccess("");
+    if (noticeEnabled && !noticeMessage.trim()) { setNoticeError("اكتب رسالة التنبيه الأول"); return; }
+    setNoticeBusy(true);
+    const res = await fetch("/api/admin/site-notice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: noticeEnabled, message: noticeMessage, buttonLabel: noticeButtonLabel }) });
+    const data = await res.json().catch(() => ({}));
+    setNoticeBusy(false);
+    if (!res.ok) { setNoticeError(data.error || "حصل خطأ أثناء الحفظ"); return; }
+    setNoticeSuccess(noticeEnabled ? "اتحفظ التنبيه وهيظهر مرة واحدة لكل زائر" : "التنبيه اتوقف");
+    loadNotice();
   }
 
   async function loadAuctions() {
@@ -380,16 +412,17 @@ export default function AdminPage() {
   }
 
   async function resetCheer(school: string) {
-    const confirmed = window.confirm(
-      `متأكد إنك عايز تصفّر تكبيس "${school}"؟ العداد هيرجع صفر لكل الناس فورًا.`
-    );
-    if (!confirmed) return;
+    const confirmation = window.prompt(`تحذير: تصفير تكبيس "${school}" لا يمكن التراجع عنه. اكتب اسم المدرسة كاملًا للتأكيد.`);
+    if (confirmation !== school) {
+      if (confirmation !== null) setCheerError("اسم المدرسة غير مطابق، لم يتم تصفير أي بيانات.");
+      return;
+    }
 
     setCheerError("");
     const res = await fetch("/api/admin/cheer", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ school })
+      body: JSON.stringify({ school, confirmation })
     });
     if (!res.ok) {
       const data = await res.json();
@@ -449,6 +482,7 @@ export default function AdminPage() {
     loadUsers();
     loadDaily();
     loadLaunch();
+    loadNotice();
     loadAuctions();
     loadCheer();
     loadTrivia();
@@ -620,6 +654,13 @@ export default function AdminPage() {
             onClick={() => setTab("launch")}
           >
             موعد الإطلاق
+          </button>
+          <button
+            className={tab === "notice" ? "nav-link active" : "nav-link"}
+            style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)" }}
+            onClick={() => setTab("notice")}
+          >
+            تنبيه الموقع
           </button>
           <button
             className={tab === "auction" ? "nav-link active" : "nav-link"}
@@ -1057,6 +1098,23 @@ export default function AdminPage() {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {tab === "notice" && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>تنبيه يظهر للزوار</h3>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>اكتب رسالة، فعّلها، وكل زائر هيشوفها مرة واحدة فقط. لو عدّلت الرسالة أو الزر، هتظهر النسخة الجديدة مرة واحدة كمان.</p>
+            {noticeLoading ? <div className="empty">جاري التحميل...</div> : <>
+              {noticeError && <div className="error-text">{noticeError}</div>}
+              {noticeSuccess && <div className="success-text">{noticeSuccess}</div>}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontWeight: 700 }}>
+                <input type="checkbox" checked={noticeEnabled} onChange={(e) => setNoticeEnabled(e.target.checked)} /> فعّل التنبيه للزوار
+              </label>
+              <div className="field"><label>رسالة التنبيه</label><textarea className="input" rows={4} maxLength={500} value={noticeMessage} placeholder="مثال: بكرة فيه تحدي جديد الساعة 8" onChange={(e) => setNoticeMessage(e.target.value)} /></div>
+              <div className="field"><label>كلمة زر التأكيد</label><input className="input" maxLength={32} value={noticeButtonLabel} placeholder="تمام" onChange={(e) => setNoticeButtonLabel(e.target.value)} /></div>
+              <ShakeButton className="btn btn-gold" onClick={saveNotice} disabled={noticeBusy}>{noticeBusy ? "جاري الحفظ..." : "احفظ التنبيه"}</ShakeButton>
+            </>}
           </div>
         )}
 
