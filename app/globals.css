@@ -1,3 +1,4 @@
+/* Style reminder: K.A Juniors uses a warm gold-on-midnight identity; controls should stay high-contrast, touch-friendly, and visually distinct on narrow mobile screens. */
 :root {
   --bg: #08080a;
   --bg-soft: #0f0f12;
@@ -1104,4 +1105,28 @@ select.input {
 .pictionary-lobby-start:disabled { cursor: not-allowed; color: #77706a; background: #393631; opacity: .8; }
 .pictionary-lobby-note { margin: 16px 0 0; color: #77777f; font-size: 9px; text-align: center; }
 .pictionary-room-code-tag { padding: 9px 11px; color: var(--p-gold); background: rgba(245,185,66,.07); border: 1px solid rgba(245,185,66,.18); border-radius: 9px; direction: ltr; font-size: 10px; font-weight: 900; letter-spacing: .8px; }
+.pictionary-create-card h2 { display: flex; align-items: center; gap: 8px; }
+.pictionary-create-icon { display: inline-grid; place-items: center; width: 27px; height: 27px; color: #2a1800; background: var(--p-gold); border-radius: 9px; font-family: Cairo, sans-serif; font-size: 18px; line-height: 1; }
+.pictionary-rounds-select { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0; padding: 12px; border: 1px solid rgba(245,185,66,.22); border-radius: 14px; background: rgba(10,10,12,.46); }
+.pictionary-rounds-copy { display: grid; gap: 2px; }
+.pictionary-rounds-copy b { color: var(--p-text); font-size: 12px; }
+.pictionary-rounds-copy small { color: var(--p-muted); font-size: 9px; }
+.pictionary-rounds-control { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px 5px 10px; color: #2b1900; background: var(--p-gold); border-radius: 10px; }
+.pictionary-rounds-control select { width: 32px; color: #2b1900; background: transparent; border: 0; outline: 0; font: 900 15px Cairo, sans-serif; text-align: center; }
+.pictionary-rounds-control em { font: 800 10px Cairo, sans-serif; font-style: normal; white-space: nowrap; }
+.pictionary-create-button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 62px; text-align: right; }
+.pictionary-create-button > span:nth-child(2) { display: grid; gap: 1px; flex: 1; }
+.pictionary-create-button strong { color: #201405; font: 900 15px Cairo, sans-serif; }
+.pictionary-create-button small { color: rgba(43,25,0,.7); font-size: 9px; font-weight: 800; }
+.pictionary-create-button-icon { display: grid; place-items: center; width: 30px; height: 30px; color: var(--p-gold); background: #2b1900; border-radius: 10px; font-size: 20px; }
+.pictionary-create-button > b { font-size: 18px; }
+.guess-student-card { position: relative; max-width: 740px; margin: 0 auto; padding-top: 47px; }
+.guess-student-counter { position: absolute; top: 14px; right: 16px; padding: 5px 9px; color: var(--gold); background: rgba(245,185,66,.08); border: 1px solid rgba(245,185,66,.2); border-radius: 999px; font-size: 10px; font-weight: 800; }
+.guess-confirm-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(5,5,8,.78); backdrop-filter: blur(8px); }
+.guess-confirm-card { width: min(390px,100%); padding: 25px; text-align: center; background: linear-gradient(145deg, rgba(30,29,34,.99), rgba(18,18,21,.99)); border: 1px solid rgba(245,185,66,.35); border-radius: 20px; box-shadow: 0 24px 80px rgba(0,0,0,.48); }
+.guess-confirm-card > span { display: grid; place-items: center; width: 43px; height: 43px; margin: 0 auto 10px; background: rgba(245,185,66,.13); border-radius: 50%; font-size: 20px; }
+.guess-confirm-card h3 { margin: 0; font: 800 18px Marhey, sans-serif; }
+.guess-confirm-card p { margin: 10px 0 19px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.guess-confirm-card > div { display: flex; gap: 8px; }
+.guess-confirm-card .btn { flex: 1; padding: 10px 8px; font-size: 12px; }
 @media (max-width: 620px) { .pictionary-lobby-shell { padding: 24px 0 45px; } .pictionary-lobby { padding: 16px; border-radius: 18px; } .pictionary-lobby-head { flex-direction: column; gap: 12px; } .pictionary-lobby-grid { grid-template-columns: 1fr; } .pictionary-lobby-players { grid-template-columns: 1fr 1fr; } .pictionary-lobby-room-top { align-items: flex-start; flex-direction: column; } .pictionary-lobby-actions { align-items: stretch; flex-direction: column; } .pictionary-lobby-start { width: 100%; } }
