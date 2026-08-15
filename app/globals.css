@@ -1257,6 +1257,8 @@ select.input {
 .song-clip-head h4 { margin: 4px 0 0; font: 800 15px Marhey, sans-serif; }
 .song-clip-head > span { display: grid; place-items: center; width: 33px; height: 33px; color: #2b1b04; background: var(--gold); border-radius: 10px; }
 .song-clip-editor > p { margin: 8px 0 13px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.song-clip-success { margin: 10px 0; padding: 10px; color: #cef8e9; background: rgba(124,224,192,.1); border: 1px solid rgba(124,224,192,.32); border-radius: 10px; font-size: 10px; line-height: 1.8; }
+.song-clip-success b { color: var(--mint); word-break: break-all; }
 .song-source-drop { display: grid; gap: 4px; padding: 12px; color: var(--text); border: 1px solid rgba(244,242,236,.14); border-radius: 12px; background: rgba(9,9,11,.36); cursor: pointer; }
 .song-source-drop:hover { border-color: rgba(245,185,66,.48); }
 .song-source-drop input { width: 100%; max-width: 100%; color: var(--muted); font-size: 10px; }
