@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ShakeButton from "../../components/ShakeButton";
+import SongAudioClipEditor from "../../components/SongAudioClipEditor";
 import { SCHOOLS, getSchoolColor } from "../../lib/schools";
 
 type Question = {
@@ -172,6 +173,18 @@ export default function AdminPage() {
   const [songIntroFile, setSongIntroFile] = useState<File | null>(null);
   const [songFullFile, setSongFullFile] = useState<File | null>(null);
   const [songFileReset, setSongFileReset] = useState(0);
+  const [editingSong, setEditingSong] = useState<SongQuestionRow | null>(null);
+  const [editSongTitle, setEditSongTitle] = useState("");
+  const [editSongPrompt, setEditSongPrompt] = useState("");
+  const [editSongFullLine, setEditSongFullLine] = useState("");
+  const [editSongOptions, setEditSongOptions] = useState(["", "", "", ""]);
+  const [editSongCorrect, setEditSongCorrect] = useState(0);
+  const [editSongIntroFile, setEditSongIntroFile] = useState<File | null>(null);
+  const [editSongFullFile, setEditSongFullFile] = useState<File | null>(null);
+  const [editRemoveIntro, setEditRemoveIntro] = useState(false);
+  const [editRemoveFull, setEditRemoveFull] = useState(false);
+  const [editSongBusy, setEditSongBusy] = useState(false);
+  const [editSongFileReset, setEditSongFileReset] = useState(0);
 
   function isoToLocalInput(iso: string) {
     const d = new Date(iso);
@@ -379,6 +392,57 @@ export default function AdminPage() {
     const data = await res.json().catch(() => ({}));
     setSongActionId(null);
     if (!res.ok) { setSongError(data.error || "حصل خطأ أثناء حذف السؤال"); return; }
+    void loadSongs();
+  }
+
+  function beginSongEdit(question: SongQuestionRow) {
+    setSongError("");
+    setEditingSong(question);
+    setEditSongTitle(question.title);
+    setEditSongPrompt(question.prompt_text);
+    setEditSongFullLine(question.full_line);
+    setEditSongOptions([...question.options]);
+    setEditSongCorrect(question.correct_index);
+    setEditSongIntroFile(null);
+    setEditSongFullFile(null);
+    setEditRemoveIntro(false);
+    setEditRemoveFull(false);
+    setEditSongFileReset((value) => value + 1);
+  }
+
+  function closeSongEdit() {
+    if (editSongBusy) return;
+    setEditingSong(null);
+  }
+
+  async function saveSongEdit() {
+    if (!editingSong) return;
+    setSongError("");
+    if (!editSongTitle.trim() || !editSongPrompt.trim() || !editSongFullLine.trim() || !editSongPrompt.includes("…")) {
+      setSongError("اكتب العنوان والجملة وعلامة … مكان الجزء الناقص");
+      return;
+    }
+    if (editSongOptions.some((option) => !option.trim())) {
+      setSongError("اكتب الأربع اختيارات كلها");
+      return;
+    }
+    setEditSongBusy(true);
+    const form = new FormData();
+    form.append("questionId", editingSong.id);
+    form.append("title", editSongTitle);
+    form.append("promptText", editSongPrompt);
+    form.append("fullLine", editSongFullLine);
+    editSongOptions.forEach((option, index) => form.append(`option${index}`, option));
+    form.append("correctIndex", String(editSongCorrect));
+    form.append("removeIntro", String(editRemoveIntro && !editSongIntroFile));
+    form.append("removeFull", String(editRemoveFull && !editSongFullFile));
+    if (editSongIntroFile) form.append("introAudio", editSongIntroFile);
+    if (editSongFullFile) form.append("fullAudio", editSongFullFile);
+    const res = await fetch("/api/admin/songs", { method: "PATCH", body: form });
+    const data = await res.json().catch(() => ({}));
+    setEditSongBusy(false);
+    if (!res.ok) { setSongError(data.error || "حصل خطأ أثناء حفظ التعديل"); return; }
+    setEditingSong(null);
     void loadSongs();
   }
 
@@ -1519,6 +1583,7 @@ export default function AdminPage() {
                 <div className="field"><label>مقطع قبل الإجابة (اختياري)</label><input key={`intro-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongIntroFile(e.target.files?.[0] || null)} /><small className="muted">MP3 أو M4A أو WAV أو AAC أو OGG، حتى 5 ميجابايت.</small></div>
                 <div className="field"><label>المقطع الكامل بعد الإجابة (اختياري)</label><input key={`full-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongFullFile(e.target.files?.[0] || null)} /><small className="muted">يتشغل تلقائيًا بعد النتيجة لو تم رفعه.</small></div>
               </div>
+              <SongAudioClipEditor key={`create-clip-${songFileReset}`} introFile={songIntroFile} fullFile={songFullFile} onIntroFile={setSongIntroFile} onFullFile={setSongFullFile} disabled={songBusy} />
               <ShakeButton className="btn btn-gold" onClick={createSong} disabled={songBusy}>{songBusy ? "جاري الحفظ والرفع…" : "أضف سؤال كمل الأغنية"}</ShakeButton>
             </div>
             <h3>أسئلة كمل الأغنية الحالية ({songQuestions.length})</h3>
@@ -1529,12 +1594,37 @@ export default function AdminPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>{question.title}</div><div className="muted" style={{ fontSize: 13, marginTop: 5 }}>{question.prompt_text}</div></div><span className="badge" style={{ color: question.is_active ? "var(--mint)" : "var(--muted)", whiteSpace: "nowrap" }}>{question.is_active ? "🟢 متاح" : "⏸ متوقف"}</span></div>
                     <div style={{ display: "grid", gap: 4, marginTop: 10 }}>{question.options.map((option, index) => <div key={index} className="muted" style={{ color: index === question.correct_index ? "var(--mint)" : undefined, fontWeight: index === question.correct_index ? 800 : 400, fontSize: 13 }}>{index === question.correct_index ? "✅ " : "• "}{option}</div>)}</div>
                     <div className="song-admin-meta"><span>{question.intro_audio_path ? "✓ مقطع بداية" : "— بدون مقطع بداية"}</span><span>{question.full_audio_path ? "✓ مقطع كامل" : "— بدون مقطع كامل"}</span><span>جاوبوا عليه: {question.answersCount}</span></div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}><button className={question.is_active ? "btn btn-outline" : "btn btn-gold"} style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void toggleSong(question)} disabled={songActionId === question.id}>{songActionId === question.id ? "..." : question.is_active ? "وقف السؤال" : "فعّل السؤال"}</button><button className="btn btn-danger" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void deleteSong(question)} disabled={songActionId === question.id}>حذف</button></div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}><button className="btn btn-outline" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => beginSongEdit(question)} disabled={songActionId === question.id}>✎ تعديل السؤال والصوت</button><button className={question.is_active ? "btn btn-outline" : "btn btn-gold"} style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void toggleSong(question)} disabled={songActionId === question.id}>{songActionId === question.id ? "..." : question.is_active ? "وقف السؤال" : "فعّل السؤال"}</button><button className="btn btn-danger" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void deleteSong(question)} disabled={songActionId === question.id}>حذف</button></div>
                   </div>
                 ))}
               </div>
             )}
           </>
+        )}
+
+        {editingSong && (
+          <div className="song-edit-overlay" role="dialog" aria-modal="true" aria-label="تعديل سؤال كمل الأغنية">
+            <div className="song-edit-modal">
+              <div className="song-edit-modal-head"><div><span className="song-eyebrow">تعديل سؤال موجود</span><h3>✎ {editingSong.title}</h3></div><button type="button" className="song-edit-close" onClick={closeSongEdit} disabled={editSongBusy} aria-label="إغلاق">×</button></div>
+              {songError && <div className="error-text">{songError}</div>}
+              <div className="field"><label>اسم الأغنية أو عنوان داخلي</label><input className="input" value={editSongTitle} maxLength={120} onChange={(e) => setEditSongTitle(e.target.value)} /></div>
+              <div className="field"><label>السطر قبل الإجابة</label><textarea className="input song-admin-textarea" value={editSongPrompt} maxLength={500} onChange={(e) => setEditSongPrompt(e.target.value)} /><small className="muted">خلي علامة «…» مكان الجزء الناقص.</small></div>
+              <div className="field"><label>الجملة الكاملة بعد الإجابة</label><textarea className="input song-admin-textarea" value={editSongFullLine} maxLength={700} onChange={(e) => setEditSongFullLine(e.target.value)} /></div>
+              {editSongOptions.map((option, index) => (
+                <div className="field" key={index}><label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="radio" name="editSongCorrect" checked={editSongCorrect === index} onChange={() => setEditSongCorrect(index)} /> اختيار {index + 1} {editSongCorrect === index ? "(الإجابة الصح)" : ""}</label><input className="input" value={option} maxLength={160} onChange={(e) => { const copy = [...editSongOptions]; copy[index] = e.target.value; setEditSongOptions(copy); }} /></div>
+              ))}
+              <div className="song-current-audio">
+                <label className={editingSong.intro_audio_path ? "has-audio" : ""}><input type="checkbox" checked={editRemoveIntro} disabled={!editingSong.intro_audio_path || Boolean(editSongIntroFile)} onChange={(e) => setEditRemoveIntro(e.target.checked)} /> {editSongIntroFile ? "هيتم استبدال مقطع البداية الجديد" : editingSong.intro_audio_path ? "مقطع البداية الحالي موجود — علّم هنا لإزالته" : "لا يوجد مقطع بداية محفوظ"}</label>
+                <label className={editingSong.full_audio_path ? "has-audio" : ""}><input type="checkbox" checked={editRemoveFull} disabled={!editingSong.full_audio_path || Boolean(editSongFullFile)} onChange={(e) => setEditRemoveFull(e.target.checked)} /> {editSongFullFile ? "هيتم استبدال مقطع بعد الإجابة" : editingSong.full_audio_path ? "المقطع الكامل الحالي موجود — علّم هنا لإزالته" : "لا يوجد مقطع كامل محفوظ"}</label>
+              </div>
+              <div className="song-admin-audio-grid">
+                <div className="field"><label>استبدل مقطع البداية مباشرة (اختياري)</label><input key={`edit-intro-${editSongFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => { setEditSongIntroFile(e.target.files?.[0] || null); setEditRemoveIntro(false); }} /></div>
+                <div className="field"><label>استبدل مقطع بعد الإجابة مباشرة (اختياري)</label><input key={`edit-full-${editSongFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => { setEditSongFullFile(e.target.files?.[0] || null); setEditRemoveFull(false); }} /></div>
+              </div>
+              <SongAudioClipEditor key={`edit-clip-${editSongFileReset}`} introFile={editSongIntroFile} fullFile={editSongFullFile} onIntroFile={(file) => { setEditSongIntroFile(file); if (file) setEditRemoveIntro(false); }} onFullFile={(file) => { setEditSongFullFile(file); if (file) setEditRemoveFull(false); }} disabled={editSongBusy} />
+              <div className="song-edit-actions"><button type="button" className="btn btn-outline" onClick={closeSongEdit} disabled={editSongBusy}>إلغاء</button><ShakeButton className="btn btn-gold" onClick={saveSongEdit} disabled={editSongBusy}>{editSongBusy ? "جاري حفظ التعديل…" : "احفظ التعديلات"}</ShakeButton></div>
+            </div>
+          </div>
         )}
 
         {tab === "pictionaryWords" && (
