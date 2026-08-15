@@ -1,3 +1,4 @@
+// Style reminder: ranking is a focused midnight scoreboard; each category is a clear, tappable lane with gold reserved for achievement and mint for live intelligence.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -43,7 +44,9 @@ type EventItem = {
   users: { nickname: string } | null;
 };
 
-type Tab = "overall" | "game" | "pictionary" | "coins" | "schools" | "weekly";
+type SmartPlayer = { id: string; nickname: string; avatar_url?: string | null; trivia_points: number; equippedFrameColor?: string | null };
+
+type Tab = "overall" | "game" | "trivia" | "pictionary" | "coins" | "schools" | "weekly";
 
 export default function LeaderboardPage() {
   const router = useRouter();
@@ -53,24 +56,28 @@ export default function LeaderboardPage() {
   const [weeklyPlayers, setWeeklyPlayers] = useState<
     { id: string; nickname: string; school: string; avatar_url?: string | null; weeklyScore: number }[]
   >([]);
+  const [smartPlayers, setSmartPlayers] = useState<SmartPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overall");
 
   async function load() {
-    const [lbRes, meRes, evRes, weeklyRes] = await Promise.all([
+    const [lbRes, meRes, evRes, weeklyRes, smartRes] = await Promise.all([
       fetch("/api/leaderboard", { cache: "no-store" }),
       fetch("/api/me", { cache: "no-store" }),
       fetch("/api/events/recent", { cache: "no-store" }),
-      fetch("/api/leaderboard/weekly", { cache: "no-store" })
+      fetch("/api/leaderboard/weekly", { cache: "no-store" }),
+      fetch("/api/trivia/leaderboard", { cache: "no-store" })
     ]);
     const lb = await lbRes.json();
     const meData = await meRes.json();
     const evData = await evRes.json();
     const weeklyData = await weeklyRes.json();
+    const smartData = await smartRes.json();
     setPlayers(lb.players || []);
     setMe(meData.user);
     setEvents(evData.events || []);
     setWeeklyPlayers(weeklyData.players || []);
+    setSmartPlayers(smartData.players || []);
     setLoading(false);
   }
 
@@ -231,6 +238,13 @@ export default function LeaderboardPage() {
           نقاط اللعب
         </button>
         <button
+          className={tab === "trivia" ? "nav-link active" : "nav-link"}
+          style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
+          onClick={() => setTab("trivia")}
+        >
+          مين الأذكى 🧠
+        </button>
+        <button
           className={tab === "pictionary" ? "nav-link active" : "nav-link"}
           style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)", flex: 1 }}
           onClick={() => setTab("pictionary")}
@@ -297,6 +311,12 @@ export default function LeaderboardPage() {
                 </div>
               ))}
             </div>
+          )
+        ) : tab === "trivia" ? (
+          smartPlayers.length === 0 ? (
+            <div className="empty">مفيش نقاط تحدي معلومات لسه — أول إجابة صح هتظهر هنا.</div>
+          ) : (
+            <div className="list">{smartPlayers.map((p, i) => <div className="row" key={p.id} style={{ cursor: "pointer", borderColor: p.nickname === me?.nickname ? "var(--gold)" : undefined }} onClick={() => goToProfile(p.nickname)}><div style={{ display: "flex", alignItems: "center", gap: 12 }}><span className={rankClass(i)}>{i + 1}</span>{p.avatar_url ? <img src={p.avatar_url} alt={p.nickname} style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined }} /> : <div className="avatar" style={{ width: 34, height: 34, fontSize: 14, border: p.equippedFrameColor ? `2px solid ${p.equippedFrameColor}` : undefined }}>{p.nickname.charAt(0)}</div>}<div><div style={{ fontWeight: 700 }}>{p.nickname}</div><div className="muted" style={{ fontSize: 11 }}>تحدي المعلومات</div></div></div><span className="badge badge-point">🧠 {p.trivia_points}</span></div>)}</div>
           )
         ) : players.length === 0 ? (
           <div className="empty">محدش اتصدر لسه، يلا العب واحجز مكانك</div>
