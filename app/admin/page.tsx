@@ -77,9 +77,23 @@ type PictionaryWordRow = {
   created_at: string;
 };
 
+type SongQuestionRow = {
+  id: string;
+  title: string;
+  prompt_text: string;
+  full_line: string;
+  options: string[];
+  correct_index: number;
+  intro_audio_path: string | null;
+  full_audio_path: string | null;
+  is_active: boolean;
+  created_at: string;
+  answersCount: number;
+};
+
 export default function AdminPage() {
   const [tab, setTab] = useState<
-    "questions" | "users" | "daily" | "launch" | "notice" | "auction" | "cheer" | "trivia" | "pictionaryWords"
+    "questions" | "users" | "daily" | "launch" | "notice" | "auction" | "cheer" | "trivia" | "songs" | "pictionaryWords"
   >("questions");
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -144,6 +158,20 @@ export default function AdminPage() {
   const [pictionaryBusy, setPictionaryBusy] = useState(false);
   const [pictionaryError, setPictionaryError] = useState("");
   const [pictionaryDeleteId, setPictionaryDeleteId] = useState<string | null>(null);
+
+  const [songQuestions, setSongQuestions] = useState<SongQuestionRow[]>([]);
+  const [songLoading, setSongLoading] = useState(true);
+  const [songBusy, setSongBusy] = useState(false);
+  const [songError, setSongError] = useState("");
+  const [songActionId, setSongActionId] = useState<string | null>(null);
+  const [songTitle, setSongTitle] = useState("");
+  const [songPrompt, setSongPrompt] = useState("");
+  const [songFullLine, setSongFullLine] = useState("");
+  const [songOptions, setSongOptions] = useState(["", "", "", ""]);
+  const [songCorrect, setSongCorrect] = useState(0);
+  const [songIntroFile, setSongIntroFile] = useState<File | null>(null);
+  const [songFullFile, setSongFullFile] = useState<File | null>(null);
+  const [songFileReset, setSongFileReset] = useState(0);
 
   function isoToLocalInput(iso: string) {
     const d = new Date(iso);
@@ -297,6 +325,61 @@ export default function AdminPage() {
     setPictionaryWords(data.words || []);
     setPictionaryError(res.ok ? "" : data.error || "حصل خطأ أثناء تحميل الكلمات");
     setPictionaryLoading(false);
+  }
+
+  async function loadSongs() {
+    setSongLoading(true);
+    const res = await fetch("/api/admin/songs", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    setSongQuestions(data.questions || []);
+    setSongError(res.ok ? "" : data.error || "حصل خطأ أثناء تحميل بنك الأغاني");
+    setSongLoading(false);
+  }
+
+  async function createSong() {
+    setSongError("");
+    if (!songTitle.trim() || !songPrompt.trim() || !songFullLine.trim() || !songPrompt.includes("…")) {
+      setSongError("اكتب العنوان والجملة وعلامة … مكان الجزء الناقص");
+      return;
+    }
+    if (songOptions.some((option) => !option.trim())) {
+      setSongError("اكتب الأربع اختيارات كلها");
+      return;
+    }
+    setSongBusy(true);
+    const form = new FormData();
+    form.append("title", songTitle);
+    form.append("promptText", songPrompt);
+    form.append("fullLine", songFullLine);
+    songOptions.forEach((option, index) => form.append(`option${index}`, option));
+    form.append("correctIndex", String(songCorrect));
+    if (songIntroFile) form.append("introAudio", songIntroFile);
+    if (songFullFile) form.append("fullAudio", songFullFile);
+    const res = await fetch("/api/admin/songs", { method: "POST", body: form });
+    const data = await res.json().catch(() => ({}));
+    setSongBusy(false);
+    if (!res.ok) { setSongError(data.error || "حصل خطأ أثناء إضافة السؤال"); return; }
+    setSongTitle(""); setSongPrompt(""); setSongFullLine(""); setSongOptions(["", "", "", ""]); setSongCorrect(0); setSongIntroFile(null); setSongFullFile(null); setSongFileReset((value) => value + 1);
+    void loadSongs();
+  }
+
+  async function toggleSong(question: SongQuestionRow) {
+    setSongActionId(question.id); setSongError("");
+    const res = await fetch("/api/admin/songs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: question.id, isActive: !question.is_active }) });
+    const data = await res.json().catch(() => ({}));
+    setSongActionId(null);
+    if (!res.ok) { setSongError(data.error || "حصل خطأ أثناء تحديث السؤال"); return; }
+    void loadSongs();
+  }
+
+  async function deleteSong(question: SongQuestionRow) {
+    if (!window.confirm(`متأكد إنك عايز تحذف سؤال «${question.title}»؟`)) return;
+    setSongActionId(question.id); setSongError("");
+    const res = await fetch("/api/admin/songs", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: question.id }) });
+    const data = await res.json().catch(() => ({}));
+    setSongActionId(null);
+    if (!res.ok) { setSongError(data.error || "حصل خطأ أثناء حذف السؤال"); return; }
+    void loadSongs();
   }
 
   async function createPictionaryWord() {
@@ -486,6 +569,7 @@ export default function AdminPage() {
     loadAuctions();
     loadCheer();
     loadTrivia();
+    loadSongs();
     loadPictionaryWords();
   }, []);
 
@@ -682,6 +766,13 @@ export default function AdminPage() {
             onClick={() => setTab("trivia")}
           >
             تحدي المعلومات
+          </button>
+          <button
+            className={tab === "songs" ? "nav-link active" : "nav-link"}
+            style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)" }}
+            onClick={() => setTab("songs")}
+          >
+            كمل الأغنية ({songQuestions.length})
           </button>
           <button
             className={tab === "pictionaryWords" ? "nav-link active" : "nav-link"}
@@ -1401,6 +1492,44 @@ export default function AdminPage() {
                         </button>
                       )}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "songs" && (
+          <>
+            <div className="card song-admin-card" style={{ marginBottom: 22 }}>
+              <span className="song-eyebrow">بنك كمل الأغنية</span>
+              <h3 style={{ marginTop: 7 }}>ضيف سؤال ومقاطع الصوت</h3>
+              <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>اكتب علامة «…» مكان الجزء الناقص. اللاعب عنده 40 ثانية، والصح ياخد 5 نقاط أغاني والغلط ياخد نقطة واحدة.</p>
+              {songError && <div className="error-text">{songError}</div>}
+              <div className="field"><label>اسم الأغنية أو عنوان داخلي</label><input className="input" value={songTitle} maxLength={120} placeholder="مثال: سؤال الأسبوع الأول" onChange={(e) => setSongTitle(e.target.value)} /></div>
+              <div className="field"><label>السطر قبل الإجابة</label><textarea className="input song-admin-textarea" value={songPrompt} maxLength={500} placeholder="مثال: من الإسكندرية للقاهرة لـ…" onChange={(e) => setSongPrompt(e.target.value)} /><small className="muted">علامة «…» إلزامية في مكان الكلمة أو الجملة الناقصة.</small></div>
+              <div className="field"><label>الجملة الكاملة بعد الإجابة</label><textarea className="input song-admin-textarea" value={songFullLine} maxLength={700} placeholder="مثال: من الإسكندرية للقاهرة لأسوان" onChange={(e) => setSongFullLine(e.target.value)} /></div>
+              {songOptions.map((option, index) => (
+                <div className="field" key={index}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="radio" name="songCorrect" checked={songCorrect === index} onChange={() => setSongCorrect(index)} /> اختيار {index + 1} {songCorrect === index ? "(الإجابة الصح)" : ""}</label>
+                  <input className="input" value={option} maxLength={160} onChange={(e) => { const copy = [...songOptions]; copy[index] = e.target.value; setSongOptions(copy); }} />
+                </div>
+              ))}
+              <div className="song-admin-audio-grid">
+                <div className="field"><label>مقطع قبل الإجابة (اختياري)</label><input key={`intro-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongIntroFile(e.target.files?.[0] || null)} /><small className="muted">MP3 أو M4A أو WAV أو AAC أو OGG، حتى 5 ميجابايت.</small></div>
+                <div className="field"><label>المقطع الكامل بعد الإجابة (اختياري)</label><input key={`full-${songFileReset}`} className="input" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" onChange={(e) => setSongFullFile(e.target.files?.[0] || null)} /><small className="muted">يتشغل تلقائيًا بعد النتيجة لو تم رفعه.</small></div>
+              </div>
+              <ShakeButton className="btn btn-gold" onClick={createSong} disabled={songBusy}>{songBusy ? "جاري الحفظ والرفع…" : "أضف سؤال كمل الأغنية"}</ShakeButton>
+            </div>
+            <h3>أسئلة كمل الأغنية الحالية ({songQuestions.length})</h3>
+            {songLoading ? <div className="card empty">جاري تحميل بنك الأغاني…</div> : songQuestions.length === 0 ? <div className="card empty">لسه مفيش أسئلة. أضف سؤال ومقطع صوت من فوق.</div> : (
+              <div className="list">
+                {songQuestions.map((question) => (
+                  <div className="card card-tight" key={question.id} style={{ borderColor: question.is_active ? "rgba(246,199,90,.36)" : undefined }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>{question.title}</div><div className="muted" style={{ fontSize: 13, marginTop: 5 }}>{question.prompt_text}</div></div><span className="badge" style={{ color: question.is_active ? "var(--mint)" : "var(--muted)", whiteSpace: "nowrap" }}>{question.is_active ? "🟢 متاح" : "⏸ متوقف"}</span></div>
+                    <div style={{ display: "grid", gap: 4, marginTop: 10 }}>{question.options.map((option, index) => <div key={index} className="muted" style={{ color: index === question.correct_index ? "var(--mint)" : undefined, fontWeight: index === question.correct_index ? 800 : 400, fontSize: 13 }}>{index === question.correct_index ? "✅ " : "• "}{option}</div>)}</div>
+                    <div className="song-admin-meta"><span>{question.intro_audio_path ? "✓ مقطع بداية" : "— بدون مقطع بداية"}</span><span>{question.full_audio_path ? "✓ مقطع كامل" : "— بدون مقطع كامل"}</span><span>جاوبوا عليه: {question.answersCount}</span></div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}><button className={question.is_active ? "btn btn-outline" : "btn btn-gold"} style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void toggleSong(question)} disabled={songActionId === question.id}>{songActionId === question.id ? "..." : question.is_active ? "وقف السؤال" : "فعّل السؤال"}</button><button className="btn btn-danger" style={{ width: "auto", padding: "8px 14px", fontSize: 13 }} onClick={() => void deleteSong(question)} disabled={songActionId === question.id}>حذف</button></div>
                   </div>
                 ))}
               </div>
