@@ -20,6 +20,7 @@ type Player = {
   equippedTitle?: string | null;
   equippedFrameColor?: string | null;
   pictionary_points?: number;
+  song_points?: number;
   cheer_taps?: number;
   memory_plays?: number;
   wheel_spins?: number;
@@ -55,7 +56,7 @@ type RankingProfile = {
   equippedFrameColor?: string | null;
 };
 
-type Tab = "overall" | "game" | "trivia" | "pictionary" | "coins" | "schools" | "weekly";
+type Tab = "overall" | "game" | "trivia" | "songs" | "pictionary" | "coins" | "schools" | "weekly";
 
 export default function LeaderboardPage() {
   const router = useRouter();
@@ -117,6 +118,9 @@ export default function LeaderboardPage() {
   const sortedPictionary = [...players]
     .filter((player) => (player.pictionary_points || 0) > 0)
     .sort((a, b) => (b.pictionary_points || 0) - (a.pictionary_points || 0));
+  const sortedSongs = [...players]
+    .filter((player) => (player.song_points || 0) > 0)
+    .sort((a, b) => (b.song_points || 0) - (a.song_points || 0));
 
   const schoolMap = new Map<string, { total: number; count: number }>();
   players.forEach((p) => {
@@ -237,6 +241,12 @@ export default function LeaderboardPage() {
           مين الأذكى 🧠
         </button>
         <button
+          className={tab === "songs" ? "leaderboard-tab active" : "leaderboard-tab"}
+          onClick={() => setTab("songs")}
+        >
+          المغني 🎤
+        </button>
+        <button
           className={tab === "pictionary" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("pictionary")}
         >
@@ -292,6 +302,12 @@ export default function LeaderboardPage() {
             <div className="empty">مفيش نقاط ارسم واتقال لسه — أول تخمين صح يحجز أول مكان.</div>
           ) : (
             <div className="list">{sortedPictionary.map((p, i) => renderPlayerRow(p, i, p.pictionary_points || 0, "✎"))}</div>
+          )
+        ) : tab === "songs" ? (
+          sortedSongs.length === 0 ? (
+            <div className="empty">مفيش نقاط كمل الأغنية لسه — أول إجابة صح هتحجز أول مكان.</div>
+          ) : (
+            <div className="list">{sortedSongs.map((p, i) => renderPlayerRow(p, i, p.song_points || 0, "🎤"))}</div>
           )
         ) : tab === "coins" ? (
           <div className="list">
