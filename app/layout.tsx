@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import SiteNotice from "../components/SiteNotice";
 
 export const metadata: Metadata = {
   title: "K.A Juniors",
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body>
         <div className="stars" aria-hidden="true" />
         {children}
+        <SiteNotice />
       </body>
     </html>
   );
