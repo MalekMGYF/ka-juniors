@@ -1,6 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import SiteNotice from "../components/SiteNotice";
+import ThemeBootstrap from "../components/ThemeBootstrap";
+import { themeBootstrapScript } from "../lib/theme";
 
 export const metadata: Metadata = {
   title: "K.A Juniors",
@@ -18,6 +20,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -31,6 +34,7 @@ export default function RootLayout({
       </head>
       <body>
         <div className="stars" aria-hidden="true" />
+        <ThemeBootstrap />
         {children}
         <SiteNotice />
       </body>
