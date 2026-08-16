@@ -61,6 +61,7 @@ type ReferralStats = {
 export default function ProfilePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me>(null);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -89,7 +90,16 @@ export default function ProfilePage() {
   useEffect(() => {
     load();
     loadReferral();
+    try {
+      setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+    } catch {}
   }, []);
+
+  function setAppearance(nextTheme: "dark" | "light") {
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    try { localStorage.setItem("ka_theme_preference", nextTheme); } catch {}
+  }
 
   async function copyReferralLink() {
     try {
@@ -381,6 +391,18 @@ export default function ProfilePage() {
               <span>{me.instagram_username ? `@${me.instagram_username}` : "-"}</span>
             </div>
           </div>
+
+          <section className="appearance-card" aria-label="مظهر الموقع">
+            <div>
+              <span className="appearance-eyebrow">مظهر الموقع</span>
+              <h3>اختار الجو اللي يريح عينك</h3>
+              <p>اختيارك بيتحفظ على نفس الجهاز لكل صفحات الموقع.</p>
+            </div>
+            <div className="appearance-options" role="group" aria-label="تبديل وضع الموقع">
+              <button type="button" className={theme === "dark" ? "active" : ""} onClick={() => setAppearance("dark")} aria-pressed={theme === "dark"}><span>🌙</span><b>Dark Mode</b><small>الوضع الداكن</small></button>
+              <button type="button" className={theme === "light" ? "active" : ""} onClick={() => setAppearance("light")} aria-pressed={theme === "light"}><span>☀️</span><b>Light Mode</b><small>الوضع الفاتح</small></button>
+            </div>
+          </section>
 
           <a href="/settings" className="btn btn-outline" style={{ marginBottom: 16, display: "flex", textDecoration: "none" }}>
             ⚙️ تعديل بياناتي
