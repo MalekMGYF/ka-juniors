@@ -26,6 +26,7 @@ export default function TriviaPage() {
   const [me, setMe] = useState<Me>(null);
   const [question, setQuestion] = useState<Question | null>(null);
   const [started, setStarted] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(ANSWER_WINDOW_SECONDS);
   const [expired, setExpired] = useState(false);
@@ -47,7 +48,7 @@ export default function TriviaPage() {
     setMe(data.user);
   }
 
-  async function loadQuestion() {
+  async function loadQuestion(): Promise<Question | null> {
     setLoading(true);
     setLastResult(null);
     const res = await fetch("/api/trivia", { cache: "no-store" });
@@ -70,6 +71,8 @@ export default function TriviaPage() {
       setExpired(false);
       setSecondsLeft(ANSWER_WINDOW_SECONDS);
     }
+
+    return data.question || null;
   }
 
   useEffect(() => {
@@ -98,14 +101,15 @@ export default function TriviaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question?.id, started, expired]);
 
-  async function startQuestion() {
-    if (!question) return;
+  async function startQuestion(qId?: string) {
+    const targetId = qId || question?.id;
+    if (!targetId) return;
     setStarting(true);
     setError("");
     const res = await fetch("/api/trivia/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ questionId: question.id })
+      body: JSON.stringify({ questionId: targetId })
     });
     const data = await res.json();
     setStarting(false);
@@ -151,8 +155,11 @@ export default function TriviaPage() {
     loadMe();
 
     // بعد شوية، هاته السؤال اللي بعده تلقائي
-    setTimeout(() => {
-      loadQuestion();
+    setTimeout(async () => {
+      const nextQ = await loadQuestion();
+      if (autoPlay && nextQ) {
+        startQuestion(nextQ.id);
+      }
     }, 1800);
   }
 
@@ -172,7 +179,10 @@ export default function TriviaPage() {
       return;
     }
     vibrate(HAPTIC.tap);
-    await loadQuestion();
+    const nextQ = await loadQuestion();
+    if (autoPlay && nextQ) {
+      startQuestion(nextQ.id);
+    }
   }
 
   return (
@@ -186,7 +196,7 @@ export default function TriviaPage() {
     >
       <h2 style={{ margin: "0 0 4px" }}>تحدي المعلومات ❓</h2>
       <p className="muted" style={{ marginTop: 0, marginBottom: 18, fontSize: 13 }}>
-        دوس "ابدأ" وعندك عشر ثواني تجاوب — كل ما تجاوب بسرعة كل ما تكسب نقط وكوينات أكتر.
+        دوس "ابدأ" مرة واحدة بس وعندك عشر ثواني لكل سؤال — بعدها الأسئلة هتيجي واحد ورا التاني لوحدها، وتقدر توقف في أي وقت بزرار "توقيف".
       </p>
 
       {loading ? (
@@ -215,7 +225,14 @@ export default function TriviaPage() {
 
           {!started ? (
             <div style={{ textAlign: "center", marginTop: 18 }}>
-              <ShakeButton className="btn btn-gold" onClick={startQuestion} disabled={starting}>
+              <ShakeButton
+                className="btn btn-gold"
+                onClick={() => {
+                  setAutoPlay(true);
+                  startQuestion();
+                }}
+                disabled={starting}
+              >
                 {starting ? "جاري البدء..." : "ابدأ"}
               </ShakeButton>
             </div>
@@ -283,6 +300,23 @@ export default function TriviaPage() {
                 </div>
               )}
             </>
+          )}
+
+          {autoPlay && (
+            <div style={{ textAlign: "center", marginTop: 18 }}>
+              <button
+                onClick={() => setAutoPlay(false)}
+                className="btn"
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  fontWeight: 700
+                }}
+              >
+                ⏸ توقيف
+              </button>
+            </div>
           )}
         </div>
       )}
