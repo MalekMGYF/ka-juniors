@@ -637,6 +637,7 @@ export default function AdminPage() {
     loadPictionaryWords();
   }, []);
 
+
   async function addQuestion() {
     setError("");
     setSuccess("");
@@ -1662,6 +1663,7 @@ export default function AdminPage() {
             )}
           </>
         )}
+
       </div>
     </div>
   );
