@@ -61,7 +61,9 @@ export default function AppShell({
     { href: "/trivia", label: "تحدي المعلومات", icon: "❓" },
     { href: "/songs", label: "كمل الأغنية", icon: "🎤" },
     { href: "/pictionary", label: "ارسم واتقال", icon: "✎" },
-    { href: "/mafioso", label: "مافيوسو", icon: "🕵️" }
+    { href: "/mafioso", label: "مافيوسو", icon: "🕵️" },
+    { href: "/chat", label: "الشات العام", icon: "💬" },
+    { href: "/statistics", label: "الإحصائيات", icon: "📊" }
   ];
 
   useEffect(() => {
