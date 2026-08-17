@@ -49,7 +49,9 @@ export async function middleware(req: NextRequest) {
     "/auction",
     "/memory",
     "/wheel",
-    "/pictionary"
+    "/pictionary",
+    "/chat",
+    "/statistics"
   ];
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
 
