@@ -3,15 +3,10 @@ import bcrypt from "bcryptjs";
 import { supabaseServer } from "../../../lib/supabase";
 import { createUserSessionToken, sessionCookieName } from "../../../lib/auth";
 import { normalizeInstagramUsername } from "../../../lib/instagram";
+import { SCHOOLS } from "../../../lib/schools";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const SCHOOLS = [
-  "مدرسة كمال عامر",
-  "مدرسة سامح سيف اليزل",
-  "مدرسة عمر سليمان"
-];
 
 const REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // من غير حروف/أرقام بتتلخبط زي O/0 و I/1
 
@@ -59,7 +54,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!SCHOOLS.includes(school)) {
+    if (!SCHOOLS.some((item) => item.name === school)) {
       return NextResponse.json({ error: "اختار مدرسة من القايمة" }, { status: 400 });
     }
     if (password.length < 6) {
