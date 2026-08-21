@@ -356,7 +356,7 @@ select.input {
 /* Style reminder: leaderboard cards are a tactile midnight honour board—ranking is visible at a glance, scores are the visual anchor, and every player card keeps a clear profile affordance. */
 .leaderboard-title-row { align-items: flex-end; }
 .leaderboard-kicker { display: block; margin-bottom: 4px; color: var(--gold); font-size: 10px; font-weight: 900; letter-spacing: .7px; }
-.leaderboard-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.leaderboard-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .leaderboard-tab { min-height: 44px; padding: 9px 7px; color: var(--text-muted); background: rgba(255,255,255,.018); border: 1px solid var(--border); border-radius: 13px; font: 800 11px Cairo, sans-serif; cursor: pointer; transition: transform .16s cubic-bezier(.23,1,.32,1), color .16s ease, border-color .16s ease, background .16s ease; }
 .leaderboard-tab:hover { transform: translateY(-2px); color: var(--text); border-color: rgba(245,185,66,.4); }
 .leaderboard-tab.active { color: #2b1b04; background: var(--gold); border-color: #ffd16a; box-shadow: 0 8px 20px rgba(245,185,66,.2); }
