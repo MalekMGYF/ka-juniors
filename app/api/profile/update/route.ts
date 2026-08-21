@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "../../../../lib/supabase";
 import { getSessionFromCookies } from "../../../../lib/auth";
 import { normalizeInstagramUsername } from "../../../../lib/instagram";
+import { SCHOOLS } from "../../../../lib/schools";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "لازم تسجل دخول" }, { status: 401 });
   }
 
-  const { fullName, nickname, instagram } = await req.json();
+  const { fullName, nickname, instagram, school } = await req.json();
 
   if (!fullName || !nickname || !instagram) {
     return NextResponse.json({ error: "لازم تملى كل الخانات" }, { status: 400 });
@@ -37,6 +38,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (!SCHOOLS.some((item) => item.name === school)) {
+    return NextResponse.json({ error: "اختار مدرسة من القايمة" }, { status: 400 });
+  }
+
   const supabase = supabaseServer();
 
   // نتأكد إن اللقب الجديد مش مستخدم عند حد تاني
@@ -56,10 +61,11 @@ export async function POST(req: NextRequest) {
     .update({
       full_name: String(fullName).trim(),
       nickname: trimmedNickname,
-      instagram_username: instagramUsername
+      instagram_username: instagramUsername,
+      school
     })
     .eq("id", session.userId)
-    .select("nickname, full_name, instagram_username")
+    .select("nickname, full_name, instagram_username, school")
     .maybeSingle();
 
   if (error || !updatedUser) {
