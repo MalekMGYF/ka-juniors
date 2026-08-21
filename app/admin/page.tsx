@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import ShakeButton from "../../components/ShakeButton";
 import SongAudioClipEditor from "../../components/SongAudioClipEditor";
+import MafiosoCaseManager from "../../components/MafiosoCaseManager";
 import { SCHOOLS, getSchoolColor } from "../../lib/schools";
 
 type Question = {
@@ -94,7 +95,7 @@ type SongQuestionRow = {
 
 export default function AdminPage() {
   const [tab, setTab] = useState<
-    "questions" | "users" | "daily" | "launch" | "notice" | "auction" | "cheer" | "trivia" | "songs" | "pictionaryWords"
+    "questions" | "users" | "daily" | "launch" | "notice" | "auction" | "cheer" | "trivia" | "songs" | "pictionaryWords" | "mafioso"
   >("questions");
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -845,6 +846,13 @@ export default function AdminPage() {
             onClick={() => setTab("pictionaryWords")}
           >
             كلمات ارسم واتقال ({pictionaryWords.length})
+          </button>
+          <button
+            className={tab === "mafioso" ? "nav-link active" : "nav-link"}
+            style={{ cursor: "pointer", background: "none", border: "1px solid var(--border)" }}
+            onClick={() => setTab("mafioso")}
+          >
+            قضايا مافيوسو
           </button>
         </div>
 
@@ -1663,6 +1671,8 @@ export default function AdminPage() {
             )}
           </>
         )}
+
+        {tab === "mafioso" && <MafiosoCaseManager />}
 
       </div>
     </div>
