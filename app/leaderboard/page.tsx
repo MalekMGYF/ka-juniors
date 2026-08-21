@@ -20,6 +20,7 @@ type Player = {
   equippedTitle?: string | null;
   equippedFrameColor?: string | null;
   pictionary_points?: number;
+  mafioso_wins?: number;
   song_points?: number;
   cheer_taps?: number;
   memory_plays?: number;
@@ -56,7 +57,7 @@ type RankingProfile = {
   equippedFrameColor?: string | null;
 };
 
-type Tab = "overall" | "game" | "trivia" | "songs" | "pictionary" | "coins" | "schools" | "weekly";
+type Tab = "overall" | "game" | "trivia" | "songs" | "pictionary" | "mafioso" | "coins" | "schools" | "weekly";
 
 export default function LeaderboardPage() {
   const router = useRouter();
@@ -118,6 +119,9 @@ export default function LeaderboardPage() {
   const sortedPictionary = [...players]
     .filter((player) => (player.pictionary_points || 0) > 0)
     .sort((a, b) => (b.pictionary_points || 0) - (a.pictionary_points || 0));
+  const sortedMafioso = [...players]
+    .filter((player) => (player.mafioso_wins || 0) > 0)
+    .sort((a, b) => (b.mafioso_wins || 0) - (a.mafioso_wins || 0));
   const sortedSongs = [...players]
     .filter((player) => (player.song_points || 0) > 0)
     .sort((a, b) => (b.song_points || 0) - (a.song_points || 0));
@@ -189,10 +193,10 @@ export default function LeaderboardPage() {
 
   function renderPlayerRow(p: Player, i: number, showValue: number, icon: string = "⭐") {
     const level = getLevel(tab === "overall" ? generalScore(p) : p.points + p.daily_points);
-    const valueLabel = icon === "🪙" ? "كوين" : tab === "pictionary" ? "نقاط رسم" : tab === "overall" ? "درجة عامة" : "نقطة";
+    const valueLabel = icon === "🪙" ? "كوين" : tab === "pictionary" ? "نقاط رسم" : tab === "mafioso" ? "فوز مافيوسو" : tab === "overall" ? "درجة عامة" : "نقطة";
     const details = tab === "overall"
       ? <><span>🎮 {p.points} ألعاب</span><span>☀ {p.daily_points} يومي</span><span>🧠 {p.trivia_points || 0} معلومات</span><span>🔥 {p.activity_points || 0} تفاعل</span></>
-      : <span>دوس لعرض البروفايل الكامل</span>;
+      : tab === "mafioso" ? <span>كسب مع فريق المافيوسو {p.mafioso_wins || 0} مرة</span> : <span>دوس لعرض البروفايل الكامل</span>;
     return renderRankingCard(p, i, showValue, icon, valueLabel, details, level);
   }
 
@@ -253,6 +257,12 @@ export default function LeaderboardPage() {
           الرسّام ✎
         </button>
         <button
+          className={tab === "mafioso" ? "leaderboard-tab active" : "leaderboard-tab"}
+          onClick={() => setTab("mafioso")}
+        >
+          مافيوسو 🕵️
+        </button>
+        <button
           className={tab === "coins" ? "leaderboard-tab active" : "leaderboard-tab"}
           onClick={() => setTab("coins")}
         >
@@ -302,6 +312,12 @@ export default function LeaderboardPage() {
             <div className="empty">مفيش نقاط ارسم واتقال لسه — أول تخمين صح يحجز أول مكان.</div>
           ) : (
             <div className="list">{sortedPictionary.map((p, i) => renderPlayerRow(p, i, p.pictionary_points || 0, "✎"))}</div>
+          )
+        ) : tab === "mafioso" ? (
+          sortedMafioso.length === 0 ? (
+            <div className="empty">مفيش فوز مافيوسو لسه — أول فريق مافيوسو يكسب هيظهر هنا.</div>
+          ) : (
+            <div className="list">{sortedMafioso.map((p, i) => renderPlayerRow(p, i, p.mafioso_wins || 0, "🕵️"))}</div>
           )
         ) : tab === "songs" ? (
           sortedSongs.length === 0 ? (
