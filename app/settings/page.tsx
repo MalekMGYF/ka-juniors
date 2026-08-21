@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import ShakeButton from "../../components/ShakeButton";
+import { SCHOOLS } from "../../lib/schools";
 
 type Me = {
   nickname: string;
@@ -29,6 +30,7 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState("");
   const [nickname, setNickname] = useState("");
   const [instagram, setInstagram] = useState("");
+  const [school, setSchool] = useState("");
 
   async function load() {
     const res = await fetch("/api/me", { cache: "no-store" });
@@ -38,6 +40,7 @@ export default function SettingsPage() {
       setFullName(data.user.full_name || "");
       setNickname(data.user.nickname || "");
       setInstagram(data.user.instagram_username || "");
+      setSchool(data.user.school || SCHOOLS[0].name);
     }
     setLoading(false);
   }
@@ -54,7 +57,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/profile/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, nickname, instagram })
+        body: JSON.stringify({ fullName, nickname, instagram, school })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -65,7 +68,7 @@ export default function SettingsPage() {
       setSuccess("اتحفظ بنجاح ✦");
       setMe((prev) =>
         prev
-          ? { ...prev, full_name: data.user.full_name, nickname: data.user.nickname, instagram_username: data.user.instagram_username }
+          ? { ...prev, full_name: data.user.full_name, nickname: data.user.nickname, instagram_username: data.user.instagram_username, school: data.user.school }
           : prev
       );
       router.refresh();
@@ -134,12 +137,21 @@ export default function SettingsPage() {
             />
           </div>
 
+          <div className="field">
+            <label>المدرسة</label>
+            <select className="input" value={school} onChange={(e) => setSchool(e.target.value)}>
+              {SCHOOLS.map((item) => (
+                <option key={item.name} value={item.name}>{item.name}</option>
+              ))}
+            </select>
+          </div>
+
           <ShakeButton className="btn btn-gold" onClick={save} disabled={saving}>
             {saving ? "جاري الحفظ..." : "احفظ التعديلات"}
           </ShakeButton>
 
           <p className="subtitle" style={{ textAlign: "center", marginTop: 14, marginBottom: 0 }}>
-            لو غيرت اللقب هيتغير علطول في الترتيب وفي بروفايلك العام
+            المدرسة الجديدة هتظهر فورًا في بروفايلك وفي ترتيب أفضل مدرسة وكل الترتيبات
           </p>
         </div>
       )}
