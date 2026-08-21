@@ -34,17 +34,40 @@ export async function GET() {
     return counts;
   };
 
-  const [cosmeticsMap, pictionaryGuesses, cheerTaps, memoryPlays, wheelSpins] = await Promise.all([
+  const countMafiosoWinsByUser = async () => {
+    const counts = new Map<string, number>();
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data: rows, error: rowsError } = await supabase
+        .from("mafioso_room_players")
+        .select("user_id, mafioso_rooms!inner(status, final_winner)")
+        .eq("alignment", "mafia")
+        .eq("mafioso_rooms.status", "finished")
+        .eq("mafioso_rooms.final_winner", "mafia")
+        .order("joined_at", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (rowsError || !rows?.length) break;
+      rows.forEach((row) => {
+        if (row.user_id) counts.set(row.user_id, (counts.get(row.user_id) || 0) + 1);
+      });
+      if (rows.length < pageSize) break;
+    }
+    return counts;
+  };
+
+  const [cosmeticsMap, pictionaryGuesses, cheerTaps, memoryPlays, wheelSpins, mafiosoWins] = await Promise.all([
     getEquippedCosmeticsMap(supabase),
     countRowsByUser("pictionary_messages", "created_at", true),
     countRowsByUser("cheer_taps", "created_at"),
     countRowsByUser("memory_plays", "played_at"),
-    countRowsByUser("wheel_spins", "spun_at")
+    countRowsByUser("wheel_spins", "spun_at"),
+    countMafiosoWinsByUser()
   ]);
 
   const players = (data || []).map((u) => ({
     ...u,
     pictionary_points: (pictionaryGuesses.get(u.id) || 0) * 3,
+    mafioso_wins: mafiosoWins.get(u.id) || 0,
     cheer_taps: cheerTaps.get(u.id) || 0,
     memory_plays: memoryPlays.get(u.id) || 0,
     wheel_spins: wheelSpins.get(u.id) || 0,
