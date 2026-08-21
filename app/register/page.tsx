@@ -3,19 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ShakeButton from "../../components/ShakeButton";
-
-const SCHOOLS = [
-  "مدرسة كمال عامر",
-  "مدرسة سامح سيف اليزل",
-  "مدرسة عمر سليمان"
-];
+import { SCHOOLS } from "../../lib/schools";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [nickname, setNickname] = useState("");
   const [instagram, setInstagram] = useState("");
-  const [school, setSchool] = useState(SCHOOLS[0]);
+  const [school, setSchool] = useState(SCHOOLS[0].name);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -108,8 +103,8 @@ export default function RegisterPage() {
             onChange={(e) => setSchool(e.target.value)}
           >
             {SCHOOLS.map((s) => (
-              <option key={s} value={s}>
-                {s}
+              <option key={s.name} value={s.name}>
+                {s.name}
               </option>
             ))}
           </select>
