@@ -156,16 +156,27 @@ export async function GET(request: NextRequest) {
     const voteCounts = new Map<string, number>();
     for (const vote of (votesResult.data || []) as any[]) voteCounts.set(vote.target_id, (voteCounts.get(vote.target_id) || 0) + 1);
     const ownRole = me?.role_id ? roleMap.get(me.role_id) : null;
+    const hasPublicRoles = room.status !== "waiting";
+    const publicPlayerNames = new Map(members.map((member) => {
+      const nickname = (userMap.get(member.user_id) as any)?.nickname || "لاعب";
+      const roleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
+      return [member.user_id, roleName ? `${roleName} ${nickname}` : nickname];
+    }));
     return noStoreJson({
       configured: true,
       sessionUserId: session.userId,
       room: { ...room, isHost: room.created_by === session.userId },
       case: caseResult.data ? { title: caseResult.data.title, subtitle: caseResult.data.subtitle, briefing: caseResult.data.briefing, revealTitle: room.status === "finished" ? caseResult.data.reveal_title : null, revealStory: room.status === "finished" ? caseResult.data.reveal_story : null, revealAudioPath: room.status === "finished" && caseResult.data.reveal_audio_path ? supabase.storage.from("mafioso-media").getPublicUrl(caseResult.data.reveal_audio_path).data.publicUrl : null } : null,
-      players: members.map((member) => ({ userId: member.user_id, nickname: (userMap.get(member.user_id) as any)?.nickname || "لاعب", avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0 })),
+      players: members.map((member) => {
+        const nickname = (userMap.get(member.user_id) as any)?.nickname || "لاعب";
+        const publicRoleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
+        const revealedAlignment = member.status === "eliminated" || room.status === "finished" ? member.alignment : null;
+        return { userId: member.user_id, nickname, displayName: publicRoleName ? `${publicRoleName} ${nickname}` : nickname, publicRoleName, revealedAlignment, avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0 };
+      }),
       motives: (rolesResult as any[]).map((role) => ({ roleName: role.role_name, motive: role.public_motive })),
       ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.private_card_text, alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
       currentClue: (clueResult as any).data?.clue_text || null,
-      messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: message.users?.nickname || "لاعب" })),
+      messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: publicPlayerNames.get(message.user_id) || message.users?.nickname || "لاعب" })),
       canChat: room.status === "discussion" && me?.status === "active",
       canVote: room.status === "voting" && Boolean(me) && eligibleVoters(members).includes(session.userId),
       hasVoted: Boolean((await supabase.from("mafioso_votes").select("id").eq("room_id", room.id).eq("round_number", room.round_number).eq("voter_id", session.userId).maybeSingle()).data)
@@ -265,6 +276,7 @@ export async function POST(request: NextRequest) {
       const liveMembers = await getMembers(supabase, room.id);
       if (!eligibleVoters(liveMembers).includes(session.userId)) return noStoreJson({ error: "أنت متفرج ومش مؤهل للتصويت في الجولة دي" }, { status: 403 });
       const targetId = typeof body.targetId === "string" ? body.targetId : "";
+      if (targetId === session.userId) return noStoreJson({ error: "مينفعش تصوّت على نفسك" }, { status: 400 });
       if (!liveMembers.some((player) => player.user_id === targetId && player.status === "active")) return noStoreJson({ error: "اختار لاعب لسه جوه القضية" }, { status: 400 });
       const { error } = await supabase.from("mafioso_votes").insert({ room_id: room.id, round_number: room.round_number, voter_id: session.userId, target_id: targetId });
       if (error) return noStoreJson({ error: /unique/i.test(error.message) ? "أنت صوتت مرة بالفعل في الجولة دي" : "حصل خطأ في التصويت" }, { status: 409 });
