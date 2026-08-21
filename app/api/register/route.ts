@@ -32,6 +32,16 @@ async function generateUniqueReferralCode(supabase: any) {
   return `${randomReferralCode()}${Date.now().toString(36).slice(-2).toUpperCase()}`.slice(0, 6);
 }
 
+function registrationErrorMessage(error: unknown) {
+  const dbError = error as { code?: string; message?: string } | null;
+  const code = dbError?.code || "";
+  const message = dbError?.message || "";
+  if (message.includes("Supabase env vars")) return "إعدادات Supabase ناقصة على Vercel. أضف NEXT_PUBLIC_SUPABASE_URL وSUPABASE_SERVICE_ROLE_KEY ثم أعد النشر.";
+  if (code === "23514" && message.toLowerCase().includes("school")) return "قاعدة البيانات لم تُحدَّث لقبول المدارس الجديدة. شغّل ملف SQL تحديث المدارس في Supabase ثم جرّب تاني.";
+  if (code === "23505") return "اللقب أو يوزر الإنستجرام ده متسجل قبل كده.";
+  return "حصل خطأ في التسجيل. جرّب تاني بعد التأكد من إعدادات Supabase.";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { fullName, nickname, instagram, school, password, ref } = await req.json();
@@ -105,7 +115,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error || !user) {
-      return NextResponse.json({ error: "حصل خطأ، جرب تاني" }, { status: 500 });
+      console.error("Registration insert failed", { code: error?.code, message: error?.message });
+      return NextResponse.json({ error: registrationErrorMessage(error) }, { status: 500 });
     }
 
     // لو الدعوة صحيحة: هدية 10 كوينات للمُحيل، وسجل عملية الإحالة
@@ -133,6 +144,7 @@ export async function POST(req: NextRequest) {
     });
     return res;
   } catch (e) {
-    return NextResponse.json({ error: "حصل خطأ، جرب تاني" }, { status: 500 });
+    console.error("Registration request failed", { message: e instanceof Error ? e.message : "unknown" });
+    return NextResponse.json({ error: registrationErrorMessage(e) }, { status: 500 });
   }
 }
