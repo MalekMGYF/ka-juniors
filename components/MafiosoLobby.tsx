@@ -10,7 +10,7 @@ type Player = { userId: string; nickname: string; isYou?: boolean; status?: stri
 type OpenRoom = { code: string; hostNickname: string; playerCount: number; seatsLeft: number };
 type Props = { me: Me; onStarted: (code: string) => void };
 
-const emptySeats = Array.from({ length: 5 });
+const emptySeats: Array<Player | null> = Array.from({ length: 5 }, () => null);
 
 export default function MafiosoLobby({ me, onStarted }: Props) {
   const [room, setRoom] = useState<{ code: string; isHost: boolean } | null>(null);
@@ -22,7 +22,9 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   const [live, setLive] = useState(false);
   const [openRooms, setOpenRooms] = useState<OpenRoom[]>([]);
   const [openRoomsLoading, setOpenRoomsLoading] = useState(true);
-  const seats = useMemo(() => [...players, ...emptySeats].slice(0, 5), [players]);
+  const seats = useMemo(() => [...[...players].sort((first, second) => (first.status === "left" ? 1 : 0) - (second.status === "left" ? 1 : 0)), ...emptySeats].slice(0, 5), [players]);
+  const activePlayersCount = players.filter((player) => player.status !== "left").length;
+  const lastLeftPlayer = [...players].reverse().find((player) => player.status === "left");
 
   async function post(action: string, code?: string) {
     setBusy(true); setError("");
@@ -87,7 +89,7 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   }
 
   async function start() {
-    if (!room || players.length !== 5) return;
+    if (!room || activePlayersCount !== 5) return;
     const data = await post("start_game", room.code);
     if (data?.ok) onStarted(room.code);
   }
@@ -110,8 +112,9 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     return <section className="mafioso-lobby-shell"><div className="mafioso-lobby">
       <header className="mafioso-lobby-header"><div><span>✦ قضية أونلاين</span><h1>اجمعوا الخمسة… والسر يبدأ</h1><p>كل واحد يدخل بنفس الكود. أول ما تكملوا 5، صاحب الروم يفتح القضية.</p></div><b className="mafioso-live"><i /> {live ? "متصلين لحظيًا" : "جاري الاتصال"}</b></header>
       <div className="mafioso-code-panel"><div><small>كود الروم</small><strong>{room.code}</strong></div><button onClick={() => navigator.clipboard?.writeText(room.code).then(() => setError("اتنسخ الكود"))}>نسخ</button></div>
-      <div className="mafioso-lobby-seats">{seats.map((player: any, index) => player ? <div className="mafioso-lobby-seat occupied" key={player.userId}><span>{player.nickname.charAt(0)}</span><b>{player.nickname}{player.isYou ? " (أنت)" : ""}</b><small>{room.isHost && player.isYou ? "صاحب الروم" : "وصل"}</small></div> : <div className="mafioso-lobby-seat" key={`empty-${index}`}><span>＋</span><small>مستنيين لاعب</small></div>)}</div>
-      <div className="mafioso-lobby-footer"><p><strong>{players.length}/5</strong> لاعبين {players.length === 5 ? "— الروم جاهزة" : `— محتاجين ${5 - players.length} كمان`}</p><div className="mafioso-lobby-actions">{!room.isHost && <button className="mafioso-secondary mafioso-lobby-exit" disabled={busy} onClick={() => void exitRoom()}>اخرج من الروم</button>}{room.isHost && <button className="mafioso-lobby-close" disabled={busy} onClick={() => void closeRoom()}>اقفل واحذف الروم</button>}<button className="mafioso-primary" disabled={!room.isHost || players.length !== 5 || busy} onClick={start}>{busy ? "بنفتح القضية…" : players.length === 5 ? "ابدأ القضية" : "مستنيين الخمسة"}</button></div></div>
+      {lastLeftPlayer && <p className="mafioso-player-left-notice"><b>{lastLeftPlayer.nickname}</b> خرج من الروم — مستنيين لاعب مكانه.</p>}
+      <div className="mafioso-lobby-seats">{seats.map((player: any, index) => player ? <div className={`mafioso-lobby-seat occupied ${player.status === "left" ? "left" : ""}`} key={player.userId}><span>{player.status === "left" ? "↗" : player.nickname.charAt(0)}</span><b>{player.nickname}{player.isYou ? " (أنت)" : ""}</b><small>{player.status === "left" ? "خرج من الروم" : room.isHost && player.isYou ? "صاحب الروم" : "وصل"}</small></div> : <div className="mafioso-lobby-seat" key={`empty-${index}`}><span>＋</span><small>مستنيين لاعب</small></div>)}</div>
+      <div className="mafioso-lobby-footer"><p><strong>{activePlayersCount}/5</strong> لاعبين {activePlayersCount === 5 ? "— الروم جاهزة" : `— محتاجين ${5 - activePlayersCount} كمان`}</p><div className="mafioso-lobby-actions">{!room.isHost && <button className="mafioso-secondary mafioso-lobby-exit" disabled={busy} onClick={() => void exitRoom()}>اخرج من الروم</button>}{room.isHost && <button className="mafioso-lobby-close" disabled={busy} onClick={() => void closeRoom()}>اقفل واحذف الروم</button>}<button className="mafioso-primary" disabled={!room.isHost || activePlayersCount !== 5 || busy} onClick={start}>{busy ? "بنفتح القضية…" : activePlayersCount === 5 ? "ابدأ القضية" : "مستنيين الخمسة"}</button></div></div>
       {error && <p className="mafioso-error">{error}</p>}
     </div></section>;
   }
