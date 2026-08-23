@@ -146,7 +146,7 @@ export default function MemoryPage() {
       avatarUrl={me?.avatar_url}
       frameColor={me?.equippedFrameColor}
     >
-      <div className="title-row">
+      <div className="title-row memory-title-row">
         <div>
           <h2 style={{ margin: 0 }}>تحدي الذاكرة 🧠</h2>
           <p className="subtitle" style={{ marginBottom: 0 }}>
@@ -158,7 +158,8 @@ export default function MemoryPage() {
       {loading ? (
         <div className="card empty">جاري التحميل...</div>
       ) : !cards ? (
-        <div className="card">
+        <div className="memory-intro-card">
+          <span className="memory-intro-mark">🧠</span>
           <p style={{ marginTop: 0 }}>
             باقيلك <b>{remaining}</b> من {max} محاولات النهاردة
           </p>
@@ -172,38 +173,23 @@ export default function MemoryPage() {
           )}
         </div>
       ) : (
-        <div className="card">
+        <div className="memory-game-card">
           {gameOver && (
             <div className="success-text" style={{ marginBottom: 14 }}>
               🎉 خلصت اللعبة! كسبت {wonThisRound} كوين النهارده
             </div>
           )}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 10,
-              marginBottom: 16
-            }}
-          >
+          <div className="memory-board">
             {cards.map((c) => (
               <button
                 key={c.id}
                 onClick={() => flip(c.id)}
                 disabled={c.flipped || c.matched || busy}
-                style={{
-                  aspectRatio: "1",
-                  borderRadius: 14,
-                  border: "1px solid var(--border)",
-                  background: c.flipped || c.matched ? "var(--surface-2)" : "var(--surface)",
-                  fontSize: 26,
-                  cursor: c.flipped || c.matched ? "default" : "pointer",
-                  opacity: c.matched ? 0.55 : 1,
-                  transition: "transform 0.15s ease"
-                }}
+                className={`memory-card ${c.flipped || c.matched ? "is-flipped" : ""} ${c.matched ? "is-matched" : ""}`}
+                aria-label={c.flipped || c.matched ? `كارت ${c.symbol}` : "كارت مقفول"}
               >
-                {c.flipped || c.matched ? c.symbol : "❔"}
+                <span className="memory-card-inner"><span className="memory-card-face memory-card-front">✦</span><span className="memory-card-face memory-card-back">{c.symbol}</span></span>
               </button>
             ))}
           </div>
