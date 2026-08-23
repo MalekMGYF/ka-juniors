@@ -51,7 +51,8 @@ async function uploadRevealAudio(file: File | null, folder: string) {
 }
 async function removeAudio(paths: Array<string | null | undefined>) { const valid = paths.filter((path): path is string => Boolean(path)); if (valid.length) await supabaseServer().storage.from("mafioso-media").remove(valid); }
 async function hasOpenRoom(caseId: string) {
-  const { count } = await supabaseServer().from("mafioso_rooms").select("id", { count: "exact", head: true }).eq("case_id", caseId).in("status", ["waiting", "role_reveal", "discussion", "voting"]);
+  const { count, error } = await supabaseServer().from("mafioso_rooms").select("id", { count: "exact", head: true }).eq("case_id", caseId).in("status", ["waiting", "role_reveal", "boss_intro", "clue_reveal", "discussion", "vote_announcement", "voting", "vote_result"]);
+  if (error) throw new Error("تعذر فحص الرومات المرتبطة بالقضية");
   return Boolean(count);
 }
 function publicCases(rows: any[]) {
@@ -110,8 +111,26 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
-  const { caseId } = await req.json().catch(() => ({})); if (typeof caseId !== "string") return noStoreJson({ error: "حدد القضية الأول" }, { status: 400 });
-  if (await hasOpenRoom(caseId)) return noStoreJson({ error: "لا يمكن حذف قضية مرتبطة بروم شغالة" }, { status: 409 });
-  const supabase = supabaseServer(); const { data: existing } = await supabase.from("mafioso_cases").select("reveal_audio_path").eq("id", caseId).maybeSingle(); const { error } = await supabase.from("mafioso_cases").delete().eq("id", caseId);
-  if (error) return noStoreJson({ error: "تعذر حذف القضية" }, { status: 500 }); await removeAudio([existing?.reveal_audio_path]); return noStoreJson({ success: true });
+  const { caseId } = await req.json().catch(() => ({}));
+  if (typeof caseId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(caseId)) return noStoreJson({ error: "حدد قضية صحيحة الأول" }, { status: 400 });
+  try {
+    if (await hasOpenRoom(caseId)) return noStoreJson({ error: "مش هينفع تحذفها دلوقتي لأنها مرتبطة بروم شغالة. استنى اللعبة تخلص الأول." }, { status: 409 });
+    const supabase = supabaseServer();
+    const { data: existing, error: findError } = await supabase.from("mafioso_cases").select("reveal_audio_path").eq("id", caseId).maybeSingle();
+    if (findError) throw findError;
+    if (!existing) return noStoreJson({ error: "القضية دي اتحذفت بالفعل أو مش موجودة" }, { status: 404 });
+    const { error: detachError } = await supabase.from("mafioso_rooms").update({ case_id: null, current_clue_id: null }).eq("case_id", caseId).eq("status", "finished");
+    if (detachError) throw detachError;
+    const { error: rolesError } = await supabase.from("mafioso_case_roles").delete().eq("case_id", caseId);
+    if (rolesError) throw rolesError;
+    const { error: cluesError } = await supabase.from("mafioso_case_clues").delete().eq("case_id", caseId);
+    if (cluesError) throw cluesError;
+    const { error: deleteError } = await supabase.from("mafioso_cases").delete().eq("id", caseId);
+    if (deleteError) throw deleteError;
+    await removeAudio([existing.reveal_audio_path]);
+    return noStoreJson({ success: true });
+  } catch (error) {
+    console.error("mafioso case deletion failed", error);
+    return noStoreJson({ error: "تعذر حذف القضية. شغّل أحدث SQL مافيوسو في Supabase ثم جرّب تاني." }, { status: 500 });
+  }
 }
