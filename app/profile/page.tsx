@@ -58,6 +58,8 @@ type ReferralStats = {
   coinsEarned: number;
 } | null;
 
+type VaultItem = { id: string; name: string; description: string; type: "title" | "frame"; value: string; owned: boolean; active: boolean };
+
 export default function ProfilePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me>(null);
@@ -70,6 +72,9 @@ export default function ProfilePage() {
   const [referral, setReferral] = useState<ReferralStats>(null);
   const [referralLink, setReferralLink] = useState("");
   const [copyLabel, setCopyLabel] = useState("انسخ");
+  const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [vaultBusyId, setVaultBusyId] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/me", { cache: "no-store" });
@@ -87,9 +92,16 @@ export default function ProfilePage() {
     }
   }
 
+  async function loadVault() {
+    const res = await fetch("/api/shop", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) setVaultItems(data.items || []);
+  }
+
   useEffect(() => {
     load();
     loadReferral();
+    loadVault();
     try {
       setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
     } catch {}
@@ -99,6 +111,20 @@ export default function ProfilePage() {
     setTheme(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
     try { localStorage.setItem("ka_theme_preference", nextTheme); } catch {}
+  }
+
+  async function toggleVaultItem(item: VaultItem) {
+    if (!item.owned || vaultBusyId) return;
+    setVaultBusyId(item.id);
+    const res = await fetch("/api/shop/equip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId: item.id, activate: !item.active }) });
+    if (res.ok) {
+      setVaultItems((items) => items.map((entry) => entry.type === item.type ? { ...entry, active: entry.id === item.id ? !item.active : false } : entry));
+      await load();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "حصلت مشكلة في تجهيز العنصر");
+    }
+    setVaultBusyId(null);
   }
 
   async function copyReferralLink() {
@@ -201,7 +227,7 @@ export default function ProfilePage() {
       ) : (
         <>
           <div
-            className="public-profile-hero"
+            className="public-profile-hero ka-profile-hero"
             style={{
               background: `radial-gradient(circle at 50% 0%, ${level.color}22, var(--surface) 70%)`,
               border: `1px solid ${level.color}44`
@@ -318,6 +344,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="profile-quick-links">
+            <button type="button" className="btn btn-gold ka-vault-launch" onClick={() => setVaultOpen(true)}>
+              <span>🗄️</span><span><b>خزنتي</b><small>إطارات وألقابك</small></span>
+            </button>
             <a href="/levels" className="btn btn-outline" style={{ textAlign: "center" }}>
               🏅 المستويات
             </a>
@@ -331,6 +360,24 @@ export default function ProfilePage() {
               🏺 المزاد
             </a>
           </div>
+
+          {vaultOpen && (
+            <div className="ka-vault-overlay" role="dialog" aria-modal="true" aria-label="خزنتي" onClick={() => setVaultOpen(false)}>
+              <section className="ka-vault-card" onClick={(event) => event.stopPropagation()}>
+                <header><div><span>مقتنياتك</span><h3>خزنتي</h3><p>اختار لقب وإطار واحد عشان يظهروا في بروفايلك.</p></div><button type="button" onClick={() => setVaultOpen(false)} aria-label="إغلاق الخزنة">×</button></header>
+                {vaultItems.filter((item) => item.owned).length === 0 ? (
+                  <div className="ka-vault-empty"><span>🔒</span><b>الخزنة لسه فاضية</b><p>اكسب كوينات واشتري ألقاب أو إطارات من المتجر عشان يظهروا هنا.</p><a href="/shop" onClick={() => setVaultOpen(false)}>روح المتجر</a></div>
+                ) : (
+                  <div className="ka-vault-groups">
+                    {(["title", "frame"] as const).map((type) => {
+                      const items = vaultItems.filter((item) => item.owned && item.type === type);
+                      return items.length ? <section key={type}><h4>{type === "title" ? "الألقاب" : "الإطارات"}</h4><div className="ka-vault-items">{items.map((item) => <article className={item.active ? "active" : ""} key={item.id}><span className={type === "frame" ? "vault-frame-preview" : "vault-title-preview"} style={type === "frame" ? { borderColor: item.value } : undefined}>{type === "frame" ? "صورتك" : "✦"}</span><div><b>{item.name}</b><p>{item.description}</p></div><button type="button" disabled={vaultBusyId === item.id} onClick={() => void toggleVaultItem(item)}>{vaultBusyId === item.id ? "لحظة…" : item.active ? "مجهّز ✓" : "تجهيز"}</button></article>)}</div></section> : null;
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
 
           <div className="card" style={{ marginBottom: 16 }}>
             <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>ادعُ أصحابك 🎁</h3>
