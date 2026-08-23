@@ -21,7 +21,8 @@ export default function CheerPage() {
   const [mySchool, setMySchool] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pop, setPop] = useState(false);
-  const [tapping, setTapping] = useState(false);
+  const [burst, setBurst] = useState(0);
+  const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
 
   async function load() {
     const [cRes, meRes] = await Promise.all([
@@ -44,24 +45,25 @@ export default function CheerPage() {
 
   async function tap() {
     const school = mySchool;
-    if (!school || tapping) return;
-    setTapping(true);
+    if (!school) return;
     setPop(true);
     setTimeout(() => setPop(false), 220);
+    setBurst((value) => value + 1);
+    const heartId = Date.now() + Math.random();
+    setFloatingHearts((hearts) => [...hearts.slice(-7), { id: heartId, x: 28 + Math.random() * 44 }]);
+    setTimeout(() => setFloatingHearts((hearts) => hearts.filter((heart) => heart.id !== heartId)), 900);
     vibrate(HAPTIC.tap);
     setCounts((c) => ({ ...c, [school]: (c[school] || 0) + 1 }));
     try {
       const response = await fetch("/api/cheer", { method: "POST" });
       const data = await response.json();
       if (!response.ok) {
-        await load();
+        setCounts((c) => ({ ...c, [school]: Math.max(0, (c[school] || 0) - 1) }));
         return;
       }
-      if (typeof data.count === "number") setCounts((c) => ({ ...c, [school]: data.count }));
+      if (typeof data.count === "number") setCounts((c) => ({ ...c, [school]: Math.max(c[school] || 0, data.count) }));
     } catch {
-      await load();
-    } finally {
-      setTapping(false);
+      setCounts((c) => ({ ...c, [school]: Math.max(0, (c[school] || 0) - 1) }));
     }
   }
 
@@ -90,36 +92,27 @@ export default function CheerPage() {
         <div className="card empty">جاري التحميل...</div>
       ) : (
         <>
-          <div className="card" style={{ textAlign: "center", marginBottom: 20 }}>
-            <div className="muted" style={{ marginBottom: 10 }}>بتشجع</div>
-            <div style={{ fontFamily: "Marhey, sans-serif", fontWeight: 700, fontSize: 19, marginBottom: 20 }}>
-              {mySchool || "—"}
-            </div>
+          <section className="cheer-arena">
+            <div className="cheer-arena-head"><span>مدرج التشجيع</span><b>بتشجع {mySchool || "مدرستك"}</b><small>دوس براحتك، كل ضغطة بتتحسب</small></div>
+            <div className="cheer-heart-stage">
+              {floatingHearts.map((heart) => <span key={heart.id} className="cheer-float-heart" style={{ left: `${heart.x}%` }}>♥</span>)}
             <button
+              className={`cheer-heart-button ${pop ? "is-popping" : ""}`}
               onClick={tap}
-              disabled={!mySchool || tapping}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 90,
-                transform: pop ? "scale(1.25)" : "scale(1)",
-                transition: "transform 0.15s ease",
-                lineHeight: 1
-              }}
+              disabled={!mySchool}
+              aria-label="شجع مدرستك"
             >
-              {tapping ? "💛" : "❤️"}
+              <span>♥</span>
             </button>
-            <div style={{ marginTop: 14, fontFamily: "Marhey, sans-serif", fontWeight: 700, fontSize: 22 }}>
-              {counts[mySchool || ""] || 0}
             </div>
-          </div>
+            <div className="cheer-live-score"><small>تشجيعات مدرستك</small><strong>{counts[mySchool || ""] || 0}</strong><span>{burst > 0 ? `آخر سبام: ${burst} قلب` : "جاهز للتشجيع؟"}</span></div>
+          </section>
 
-          <h3>ترتيب التكبيس</h3>
-          <div className="card card-tight">
+          <section className="cheer-rank-board">
+            <div className="cheer-rank-heading"><div><span>لوحة المدرجات</span><h3>ترتيب التكبيس</h3></div><small>بيتحدث كل شوية</small></div>
             <div className="list">
               {ranked.map((s, i) => (
-                <div className="row" key={s.name}>
+                <div className={`row cheer-school-row ${i === 0 ? "leader" : ""}`} key={s.name}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span className={`rank ${i === 0 ? "top1" : i === 1 ? "top2" : "top3"}`}>
                       {i + 1}
@@ -127,11 +120,11 @@ export default function CheerPage() {
                     <span className="school-dot" style={{ background: s.color }} />
                     <div style={{ fontWeight: 700 }}>{s.name}</div>
                   </div>
-                  <span className="badge" style={{ color: s.color }}>❤️ {s.count}</span>
+                  <span className="cheer-count" style={{ color: s.color }}>♥ {s.count}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </>
       )}
     </AppShell>
