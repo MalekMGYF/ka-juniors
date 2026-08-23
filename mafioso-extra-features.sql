@@ -54,3 +54,36 @@ alter table mafioso_daily_mission_claims enable row level security;
 create index if not exists idx_mafioso_events_case_round on mafioso_case_events(case_id, round_number);
 create index if not exists idx_mafioso_suspicions_room_round on mafioso_room_suspicions(room_id, round_number);
 create index if not exists idx_mafioso_inspections_room on mafioso_inspections(room_id, user_id);
+
+-- مكافأة المهمة مرة واحدة فقط مع تحديث الكوينز داخل نفس المعاملة.
+create or replace function claim_mafioso_mission_reward(
+  p_user_id uuid,
+  p_mission_key text,
+  p_mission_date date,
+  p_reward integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1 from mafioso_daily_mission_claims
+    where user_id = p_user_id
+      and mission_key = p_mission_key
+      and mission_date = p_mission_date
+  ) then
+    return false;
+  end if;
+
+  insert into mafioso_daily_mission_claims (user_id, mission_key, mission_date)
+  values (p_user_id, p_mission_key, p_mission_date);
+
+  update users
+     set coins = coalesce(coins, 0) + greatest(0, least(p_reward, 20))
+   where id = p_user_id;
+
+  return true;
+end;
+$$;

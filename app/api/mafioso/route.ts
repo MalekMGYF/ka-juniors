@@ -50,10 +50,10 @@ type Room = {
 type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null; boss_intro_acknowledged_at: string | null; discussion_ready_round: number | null; rematch_ready_at: string | null };
 
 type MissionKey = "first_vote_mafia" | "case_talker" | "survivor";
-const DAILY_MISSIONS: Array<{ key: MissionKey; title: string; note: string }> = [
-  { key: "first_vote_mafia", title: "عين الصقر", note: "صوّت على مافيوسو في أول تصويت لك" },
-  { key: "case_talker", title: "صوت التحقيق", note: "اكتب 5 رسائل مناسبة أثناء النقاش" },
-  { key: "survivor", title: "آخر شاهد", note: "وصل للنهاية مع الفريق الفائز" }
+const DAILY_MISSIONS: Array<{ key: MissionKey; title: string; note: string; reward: number }> = [
+  { key: "first_vote_mafia", title: "عين الصقر", note: "صوّت على مافيوسو في أول تصويت لك", reward: 6 },
+  { key: "case_talker", title: "صوت التحقيق", note: "اكتب 5 رسائل مناسبة أثناء النقاش", reward: 4 },
+  { key: "survivor", title: "آخر شاهد", note: "وصل للنهاية مع الفريق الفائز", reward: 8 }
 ];
 
 function fallbackEvent(roundNumber: number) {
@@ -565,18 +565,26 @@ export async function POST(request: NextRequest) {
     if (action === "claim_mission") {
       if (room.status !== "finished" || !room.final_winner) return noStoreJson({ error: "المهمات بتتحسب بعد نهاية القضية" }, { status: 409 });
       const missionKey = body.missionKey as MissionKey;
-      if (!DAILY_MISSIONS.some((mission) => mission.key === missionKey)) return noStoreJson({ error: "المهمة غير موجودة" }, { status: 400 });
+      const mission = DAILY_MISSIONS.find((item) => item.key === missionKey);
+      if (!mission) return noStoreJson({ error: "المهمة غير موجودة" }, { status: 400 });
       const missionDate = new Date().toISOString().slice(0, 10);
-      const { data: alreadyClaimed } = await supabase.from("mafioso_daily_mission_claims").select("mission_key").eq("user_id", session.userId).eq("mission_key", missionKey).eq("mission_date", missionDate).maybeSingle();
-      if (alreadyClaimed) return noStoreJson({ ok: true, alreadyClaimed: true });
       const allMessages = await supabase.from("mafioso_messages").select("id").eq("room_id", room.id).eq("user_id", session.userId);
       const firstVote = await supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", 1).eq("voter_id", session.userId).maybeSingle();
       const targetAlignment = members.find((member) => member.user_id === firstVote.data?.target_id)?.alignment;
       const verified = missionKey === "case_talker" ? (allMessages.data || []).length >= 5 : missionKey === "first_vote_mafia" ? targetAlignment === "mafia" : me.status === "active" && me.alignment === room.final_winner;
       if (!verified) return noStoreJson({ error: "المهمة دي لسه ما اكتملتش" }, { status: 409 });
-      const { error } = await supabase.from("mafioso_daily_mission_claims").insert({ user_id: session.userId, mission_key: missionKey, mission_date: missionDate });
-      if (error && !/duplicate|unique/i.test(error.message)) return unavailable(error);
-      return noStoreJson({ ok: true });
+      const claimed = await supabase.rpc("claim_mafioso_mission_reward", { p_user_id: session.userId, p_mission_key: mission.key, p_mission_date: missionDate, p_reward: mission.reward });
+      if (claimed.error && /function|does not exist|schema cache/i.test(claimed.error.message || "")) {
+        const fallback = await supabase.from("mafioso_daily_mission_claims").insert({ user_id: session.userId, mission_key: mission.key, mission_date: missionDate });
+        if (fallback.error && !/duplicate|unique/i.test(fallback.error.message)) return unavailable(fallback.error);
+        if (!fallback.error) {
+          const { data: user } = await supabase.from("users").select("coins").eq("id", session.userId).maybeSingle();
+          await supabase.from("users").update({ coins: (user?.coins || 0) + mission.reward }).eq("id", session.userId);
+        }
+        return noStoreJson({ ok: true, alreadyClaimed: Boolean(fallback.error), reward: mission.reward });
+      }
+      if (claimed.error) return unavailable(claimed.error);
+      return noStoreJson({ ok: true, alreadyClaimed: claimed.data === false, reward: mission.reward });
     }
 
     if (action === "vote") {
