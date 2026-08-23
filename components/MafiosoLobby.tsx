@@ -40,6 +40,7 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     const data = res ? await res.json().catch(() => ({})) : {};
     if (!data.room) return;
     setPlayers((data.players || []).map((item: any) => ({ userId: item.userId, nickname: item.nickname, isYou: item.userId === data.sessionUserId, status: item.status })));
+    if (data.room.status === "finished") { setRoom(null); setPlayers([]); setError("الروم اتقفلت. رجعتك للـLobby."); void loadOpenRooms(); return; }
     if (data.room.status !== "waiting") onStarted(code);
   }
 
@@ -57,7 +58,7 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     const client = getSupabaseBrowserClient();
     if (!client) return;
     const channel = client.channel(mafiosoChannelName(room.code), { config: { broadcast: { self: false } } });
-    ["player_joined", "player_left", "game_started"].forEach((event) => channel.on("broadcast", { event }, () => void readRoom(room.code)));
+    ["player_joined", "player_left", "room_closed", "game_started"].forEach((event) => channel.on("broadcast", { event }, () => void readRoom(room.code)));
     channel.subscribe((status) => setLive(status === "SUBSCRIBED"));
     return () => { void client.removeChannel(channel); };
   }, [room?.code]);
@@ -91,12 +92,26 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     if (data?.ok) onStarted(room.code);
   }
 
+  async function exitRoom() {
+    if (!room) return;
+    const data = await post("leave_room", room.code);
+    if (!data?.ok) return;
+    setRoom(null); setPlayers([]); setError(""); void loadOpenRooms();
+  }
+
+  async function closeRoom() {
+    if (!room || !window.confirm("تقفل الروم وتخرج كل الناس اللي فيها؟")) return;
+    const data = await post("close_room", room.code);
+    if (!data?.ok) return;
+    setRoom(null); setPlayers([]); setError("اتقفلت الروم وخرج كل اللاعبين."); void loadOpenRooms();
+  }
+
   if (room) {
     return <section className="mafioso-lobby-shell"><div className="mafioso-lobby">
       <header className="mafioso-lobby-header"><div><span>✦ قضية أونلاين</span><h1>اجمعوا الخمسة… والسر يبدأ</h1><p>كل واحد يدخل بنفس الكود. أول ما تكملوا 5، صاحب الروم يفتح القضية.</p></div><b className="mafioso-live"><i /> {live ? "متصلين لحظيًا" : "جاري الاتصال"}</b></header>
       <div className="mafioso-code-panel"><div><small>كود الروم</small><strong>{room.code}</strong></div><button onClick={() => navigator.clipboard?.writeText(room.code).then(() => setError("اتنسخ الكود"))}>نسخ</button></div>
       <div className="mafioso-lobby-seats">{seats.map((player: any, index) => player ? <div className="mafioso-lobby-seat occupied" key={player.userId}><span>{player.nickname.charAt(0)}</span><b>{player.nickname}{player.isYou ? " (أنت)" : ""}</b><small>{room.isHost && player.isYou ? "صاحب الروم" : "وصل"}</small></div> : <div className="mafioso-lobby-seat" key={`empty-${index}`}><span>＋</span><small>مستنيين لاعب</small></div>)}</div>
-      <div className="mafioso-lobby-footer"><p><strong>{players.length}/5</strong> لاعبين {players.length === 5 ? "— الروم جاهزة" : `— محتاجين ${5 - players.length} كمان`}</p><button className="mafioso-primary" disabled={!room.isHost || players.length !== 5 || busy} onClick={start}>{busy ? "بنفتح القضية…" : players.length === 5 ? "ابدأ القضية" : "مستنيين الخمسة"}</button></div>
+      <div className="mafioso-lobby-footer"><p><strong>{players.length}/5</strong> لاعبين {players.length === 5 ? "— الروم جاهزة" : `— محتاجين ${5 - players.length} كمان`}</p><div className="mafioso-lobby-actions">{!room.isHost && <button className="mafioso-secondary mafioso-lobby-exit" disabled={busy} onClick={() => void exitRoom()}>اخرج من الروم</button>}{room.isHost && <button className="mafioso-lobby-close" disabled={busy} onClick={() => void closeRoom()}>اقفل واحذف الروم</button>}<button className="mafioso-primary" disabled={!room.isHost || players.length !== 5 || busy} onClick={start}>{busy ? "بنفتح القضية…" : players.length === 5 ? "ابدأ القضية" : "مستنيين الخمسة"}</button></div></div>
       {error && <p className="mafioso-error">{error}</p>}
     </div></section>;
   }
