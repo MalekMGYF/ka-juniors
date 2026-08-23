@@ -227,8 +227,10 @@ export async function GET(request: NextRequest) {
     if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId, error: "الروم دي مش موجودة أو اتقفلت. ارجع للـLobby واعمل روم جديدة." }, { status: 404 });
     if (await advanceIfNeeded(supabase, room)) room = await getRoom(supabase, code);
     if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId });
-    const [members, usersResult, messagesResult, caseResult, rolesResult, clueResult, votesResult] = await Promise.all([
-      getMembers(supabase, room.id),
+    const members = await getMembers(supabase, room.id);
+    const me = members.find((member) => member.user_id === session.userId);
+    if (!me) return noStoreJson({ error: "ادخل الروم الأول قبل ما تشوف تفاصيل القضية" }, { status: 403 });
+    const [usersResult, messagesResult, caseResult, rolesResult, clueResult, votesResult] = await Promise.all([
       supabase.from("mafioso_room_players").select("user_id, users(nickname, avatar_url)").eq("room_id", room.id),
       supabase.from("mafioso_messages").select("id, user_id, body, created_at, users(nickname)").eq("room_id", room.id).order("created_at").limit(120),
       room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
@@ -236,7 +238,6 @@ export async function GET(request: NextRequest) {
       room.current_clue_id ? supabase.from("mafioso_case_clues").select("clue_text").eq("id", room.current_clue_id).maybeSingle() : Promise.resolve({ data: null } as any),
       supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", room.round_number)
     ]);
-    const me = members.find((member) => member.user_id === session.userId);
     const userMap = new Map(((usersResult.data || []) as any[]).map((row) => [row.user_id, row.users]));
     const roleMap = new Map((rolesResult as any[]).map((role) => [role.id, role]));
     const voteCounts = new Map<string, number>();
