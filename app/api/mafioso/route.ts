@@ -9,11 +9,22 @@ export const revalidate = 0;
 
 const PLAYER_COUNT = 5;
 const ROLE_REVEAL_SECONDS = 60;
+const MIN_ROLE_READ_SECONDS = 5;
+const BOSS_INTRO_SECONDS = 15;
+const CLUE_ANNOUNCE_SECONDS = 10;
 const DISCUSSION_SECONDS = 300;
+const VOTE_ANNOUNCE_SECONDS = 5;
 const VOTE_SECONDS = 75;
+const VOTE_RESULT_SECONDS = 5;
+const FINISH_REVEAL_SECONDS = 10;
 
 type Db = ReturnType<typeof supabaseServer>;
-type Room = { id: string; code: string; case_id: string | null; status: string; round_number: number; phase_ends_at: string | null; current_clue_id: string | null; created_by: string | null; final_winner: string | null };
+type Room = {
+  id: string; code: string; case_id: string | null; status: string; round_number: number;
+  phase_ends_at: string | null; current_clue_id: string | null; created_by: string | null;
+  final_winner: "mafia" | "innocent" | null; last_eliminated_user_id: string | null;
+  last_eliminated_alignment: "mafia" | "innocent" | null;
+};
 type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null };
 
 function roomCode() {
@@ -31,14 +42,13 @@ function shuffle<T>(items: T[]) {
 }
 
 function inSeconds(seconds: number) { return new Date(Date.now() + seconds * 1000).toISOString(); }
-function unavailable(error?: unknown) { return noStoreJson({ configured: false, error: error instanceof Error ? error.message : "شغّل SQL مافيوسو في Supabase الأول" }); }
+function unavailable(error?: unknown) {
+  console.error("mafioso request failed", error);
+  return noStoreJson({ configured: false, error: "حصلت مشكلة في غرفة القضية. جرّب تاني بعد ثواني." }, { status: 500 });
+}
 
 async function getMembers(supabase: Db, roomId: string) {
-  const { data, error } = await supabase
-    .from("mafioso_room_players")
-    .select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at")
-    .eq("room_id", roomId)
-    .order("joined_at", { ascending: true });
+  const { data, error } = await supabase.from("mafioso_room_players").select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at").eq("room_id", roomId).order("joined_at", { ascending: true });
   if (error) throw error;
   return (data || []) as Member[];
 }
@@ -55,34 +65,61 @@ async function getCaseRoles(supabase: Db, caseId: string) {
   return data || [];
 }
 
+async function getClue(supabase: Db, room: Room) {
+  if (!room.case_id) throw new Error("missing case");
+  const { data, error } = await supabase.from("mafioso_case_clues").select("id, clue_text").eq("case_id", room.case_id).eq("round_number", room.round_number).maybeSingle();
+  if (error || !data) throw new Error("missing clue");
+  return data;
+}
+
+async function startBossIntro(supabase: Db, room: Room) {
+  const endsAt = inSeconds(BOSS_INTRO_SECONDS);
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "boss_intro", phase_ends_at: endsAt }).eq("id", room.id).eq("status", "role_reveal").select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "boss_intro_started", { endsAt });
+}
+
+async function startClueReveal(supabase: Db, room: Room) {
+  const clue = await getClue(supabase, room);
+  const endsAt = inSeconds(CLUE_ANNOUNCE_SECONDS);
+  const allowedStatuses = room.status === "boss_intro" ? ["boss_intro"] : ["vote_result"];
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "clue_reveal", current_clue_id: clue.id, phase_ends_at: endsAt }).eq("id", room.id).in("status", allowedStatuses).select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "clue_announced", { roundNumber: room.round_number, clue: clue.clue_text, endsAt });
+}
+
 async function startDiscussion(supabase: Db, room: Room) {
-  if (!room.case_id) throw new Error("القضية غير موجودة");
-  const { data: clue, error } = await supabase.from("mafioso_case_clues").select("id, clue_text").eq("case_id", room.case_id).eq("round_number", room.round_number).maybeSingle();
-  if (error || !clue) throw new Error("القضية محتاجة 4 أدلة على الأقل");
   const endsAt = inSeconds(DISCUSSION_SECONDS);
-  const { error: updateError } = await supabase.from("mafioso_rooms").update({ status: "discussion", current_clue_id: clue.id, phase_ends_at: endsAt }).eq("id", room.id);
-  if (updateError) throw updateError;
-  await broadcastMafiosoEvent(supabase, room.code, "clue_revealed", { roundNumber: room.round_number, clue: clue.clue_text, endsAt });
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "discussion", phase_ends_at: endsAt }).eq("id", room.id).eq("status", "clue_reveal").select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "discussion_started", { roundNumber: room.round_number, endsAt });
+}
+
+async function startVoteAnnouncement(supabase: Db, room: Room, isFinal = false) {
+  const endsAt = inSeconds(VOTE_ANNOUNCE_SECONDS);
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "vote_announcement", phase_ends_at: endsAt }).eq("id", room.id).in("status", ["discussion", "vote_result"]).select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "vote_announcement_started", { roundNumber: room.round_number, endsAt, isFinal });
 }
 
 async function startVoting(supabase: Db, room: Room, isFinal = false) {
   const endsAt = inSeconds(VOTE_SECONDS);
-  const { error } = await supabase.from("mafioso_rooms").update({ status: "voting", phase_ends_at: endsAt }).eq("id", room.id);
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "voting", phase_ends_at: endsAt }).eq("id", room.id).eq("status", "vote_announcement").select("id").maybeSingle();
   if (error) throw error;
-  await broadcastMafiosoEvent(supabase, room.code, "voting_started", { roundNumber: room.round_number, endsAt, isFinal });
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "voting_started", { roundNumber: room.round_number, endsAt, isFinal });
 }
 
 async function finishRoom(supabase: Db, room: Room, winner: "mafia" | "innocent", eliminatedId?: string) {
-  await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: winner, phase_ends_at: null }).eq("id", room.id);
-  await broadcastMafiosoEvent(supabase, room.code, "game_finished", { winner, eliminatedId: eliminatedId || null });
+  const endsAt = inSeconds(FINISH_REVEAL_SECONDS);
+  const { data, error } = await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: winner, phase_ends_at: endsAt }).eq("id", room.id).in("status", ["vote_result", "voting"]).select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await broadcastMafiosoEvent(supabase, room.code, "game_finished", { winner, eliminatedId: eliminatedId || null, endsAt });
 }
 
 function eligibleVoters(members: Member[]) {
   const active = members.filter((player) => player.status === "active");
   if (active.length > 2) return active.map((player) => player.user_id);
-  return members
-    .filter((player) => player.status === "active" || (player.status === "eliminated" && player.alignment === "innocent"))
-    .map((player) => player.user_id);
+  return members.filter((player) => player.status === "active" || (player.status === "eliminated" && player.alignment === "innocent")).map((player) => player.user_id);
 }
 
 async function resolveVotes(supabase: Db, room: Room) {
@@ -95,38 +132,47 @@ async function resolveVotes(supabase: Db, room: Room) {
   for (const vote of votes || []) if (eligible.includes(vote.voter_id)) counts.set(vote.target_id, (counts.get(vote.target_id) || 0) + 1);
   const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
   const isTie = !ranked.length || (ranked.length > 1 && ranked[0][1] === ranked[1][1]);
-  let eliminated: Member | undefined;
-  if (!isTie) {
-    eliminated = activeBefore.find((player) => player.user_id === ranked[0][0]);
-    if (eliminated) await supabase.from("mafioso_room_players").update({ status: "eliminated" }).eq("room_id", room.id).eq("user_id", eliminated.user_id).eq("status", "active");
+  const eliminated = isTie ? undefined : activeBefore.find((player) => player.user_id === ranked[0][0]);
+  const endsAt = inSeconds(VOTE_RESULT_SECONDS);
+  const { data: claimed, error: claimError } = await supabase.from("mafioso_rooms").update({ status: "vote_result", phase_ends_at: endsAt, last_eliminated_user_id: eliminated?.user_id || null, last_eliminated_alignment: eliminated?.alignment || null }).eq("id", room.id).eq("status", "voting").select("id").maybeSingle();
+  if (claimError) throw claimError;
+  if (!claimed) return;
+  if (eliminated) {
+    const { error } = await supabase.from("mafioso_room_players").update({ status: "eliminated" }).eq("room_id", room.id).eq("user_id", eliminated.user_id).eq("status", "active");
+    if (error) throw error;
   }
+  await broadcastMafiosoEvent(supabase, room.code, "vote_resolved", { eliminatedId: eliminated?.user_id || null, eliminatedWasMafia: eliminated?.alignment === "mafia", isTie, endsAt });
+}
 
-  const updatedMembers = eliminated ? members.map((player) => player.user_id === eliminated?.user_id ? { ...player, status: "eliminated" as const } : player) : members;
-  const activeAfter = updatedMembers.filter((player) => player.status === "active");
-  const mafiaRemaining = activeAfter.filter((player) => player.alignment === "mafia");
-  const innocentRemaining = activeAfter.filter((player) => player.alignment === "innocent");
-  await broadcastMafiosoEvent(supabase, room.code, "vote_resolved", { eliminatedId: eliminated?.user_id || null, eliminatedWasMafia: eliminated?.alignment === "mafia", isTie });
-
-  if (!mafiaRemaining.length) return finishRoom(supabase, room, "innocent", eliminated?.user_id);
-  if (!innocentRemaining.length) return finishRoom(supabase, room, "mafia", eliminated?.user_id);
-  if (room.round_number >= 5) return finishRoom(supabase, room, "mafia", eliminated?.user_id);
-  if (activeAfter.length <= 2) {
+async function continueAfterVoteResult(supabase: Db, room: Room) {
+  const members = await getMembers(supabase, room.id);
+  const active = members.filter((player) => player.status === "active");
+  const mafiaRemaining = active.filter((player) => player.alignment === "mafia");
+  const innocentRemaining = active.filter((player) => player.alignment === "innocent");
+  if (!mafiaRemaining.length) return finishRoom(supabase, room, "innocent", room.last_eliminated_user_id || undefined);
+  if (!innocentRemaining.length || room.round_number >= 5 || room.round_number >= 4) return finishRoom(supabase, room, "mafia", room.last_eliminated_user_id || undefined);
+  if (active.length <= 2) {
     const finalRound = room.round_number + 1;
-    await supabase.from("mafioso_rooms").update({ round_number: finalRound, status: "voting", phase_ends_at: inSeconds(VOTE_SECONDS) }).eq("id", room.id);
-    await broadcastMafiosoEvent(supabase, room.code, "voting_started", { roundNumber: finalRound, endsAt: inSeconds(VOTE_SECONDS), isFinal: true });
+    const { data, error } = await supabase.from("mafioso_rooms").update({ round_number: finalRound, current_clue_id: null, status: "vote_announcement", phase_ends_at: inSeconds(VOTE_ANNOUNCE_SECONDS) }).eq("id", room.id).eq("status", "vote_result").select("id").maybeSingle();
+    if (error) throw error;
+    if (data) await broadcastMafiosoEvent(supabase, room.code, "vote_announcement_started", { roundNumber: finalRound, endsAt: inSeconds(VOTE_ANNOUNCE_SECONDS), isFinal: true });
     return;
   }
-  if (room.round_number >= 4) return finishRoom(supabase, room, "mafia", eliminated?.user_id);
   const nextRoom = { ...room, round_number: room.round_number + 1 };
-  await supabase.from("mafioso_rooms").update({ round_number: nextRoom.round_number, current_clue_id: null }).eq("id", room.id);
-  await startDiscussion(supabase, nextRoom);
+  const { data, error } = await supabase.from("mafioso_rooms").update({ round_number: nextRoom.round_number, current_clue_id: null }).eq("id", room.id).eq("status", "vote_result").select("id").maybeSingle();
+  if (error) throw error;
+  if (data) await startClueReveal(supabase, nextRoom);
 }
 
 async function advanceIfNeeded(supabase: Db, room: Room) {
   if (!room.phase_ends_at || new Date(room.phase_ends_at).getTime() > Date.now()) return false;
-  if (room.status === "role_reveal") { await startDiscussion(supabase, room); return true; }
-  if (room.status === "discussion") { await startVoting(supabase, room); return true; }
+  if (room.status === "role_reveal") { await startBossIntro(supabase, room); return true; }
+  if (room.status === "boss_intro") { await startClueReveal(supabase, room); return true; }
+  if (room.status === "clue_reveal") { await startDiscussion(supabase, room); return true; }
+  if (room.status === "discussion") { await startVoteAnnouncement(supabase, room); return true; }
+  if (room.status === "vote_announcement") { await startVoting(supabase, room, room.round_number === 5); return true; }
   if (room.status === "voting") { await resolveVotes(supabase, room); return true; }
+  if (room.status === "vote_result") { await continueAfterVoteResult(supabase, room); return true; }
   return false;
 }
 
@@ -162,6 +208,8 @@ export async function GET(request: NextRequest) {
       const roleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
       return [member.user_id, roleName ? `${roleName} ${nickname}` : nickname];
     }));
+    const lastEliminatedName = room.last_eliminated_user_id ? publicPlayerNames.get(room.last_eliminated_user_id) || "اللاعب" : null;
+    const mafiaLeft = members.filter((member) => member.status === "active" && member.alignment === "mafia").length;
     return noStoreJson({
       configured: true,
       sessionUserId: session.userId,
@@ -174,8 +222,9 @@ export async function GET(request: NextRequest) {
         return { userId: member.user_id, nickname, displayName: publicRoleName ? `${publicRoleName} ${nickname}` : nickname, publicRoleName, revealedAlignment, avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0 };
       }),
       motives: (rolesResult as any[]).map((role) => ({ roleName: role.role_name, motive: role.public_motive })),
-      ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.private_card_text, alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
+      ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.alignment === "mafia" ? "أنت من فريق المافيوسو. خليك هادي وما تكشفش انتماءك." : "أنت من فريق البريئين. ركّز في كلام مافيا بوص والأدلة." , alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
       currentClue: (clueResult as any).data?.clue_text || null,
+      lastVote: { eliminatedName: lastEliminatedName, alignment: room.last_eliminated_alignment, mafiaLeft, isTie: !room.last_eliminated_user_id },
       messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: publicPlayerNames.get(message.user_id) || message.users?.nickname || "لاعب" })),
       canChat: room.status === "discussion" && me?.status === "active",
       canVote: room.status === "voting" && Boolean(me) && eligibleVoters(members).includes(session.userId),
@@ -198,8 +247,9 @@ export async function POST(request: NextRequest) {
         const created = await supabase.from("mafioso_rooms").insert({ code: roomCode(), created_by: session.userId, name: "غرفة القضية", status: "waiting" }).select("id, code").maybeSingle();
         if (!created.error) room = created.data;
       }
-      if (!room) return unavailable("تعذر إنشاء الروم");
-      await supabase.from("mafioso_room_players").insert({ room_id: room.id, user_id: session.userId, is_connected: true });
+      if (!room) return unavailable();
+      const { error } = await supabase.from("mafioso_room_players").insert({ room_id: room.id, user_id: session.userId, is_connected: true });
+      if (error) return unavailable(error);
       await broadcastMafiosoEvent(supabase, room.code, "player_joined", { userId: session.userId, nickname: session.nickname });
       return noStoreJson({ ok: true, code: room.code, roomId: room.id, isHost: true });
     }
@@ -214,7 +264,8 @@ export async function POST(request: NextRequest) {
       const members = await getMembers(supabase, room.id);
       const existing = members.find((member) => member.user_id === session.userId);
       if (!existing && members.filter((member) => member.is_connected).length >= PLAYER_COUNT) return noStoreJson({ error: "الروم كاملة — مافيوسو تحتاج 5 بالظبط" }, { status: 409 });
-      await supabase.from("mafioso_room_players").upsert({ room_id: room.id, user_id: session.userId, status: "active", is_connected: true, last_seen_at: new Date().toISOString() }, { onConflict: "room_id,user_id" });
+      const { error } = await supabase.from("mafioso_room_players").upsert({ room_id: room.id, user_id: session.userId, status: "active", is_connected: true, last_seen_at: new Date().toISOString() }, { onConflict: "room_id,user_id" });
+      if (error) return unavailable(error);
       await broadcastMafiosoEvent(supabase, code, "player_joined", { userId: session.userId, nickname: session.nickname });
       return noStoreJson({ ok: true, code, isHost: room.created_by === session.userId });
     }
@@ -238,20 +289,27 @@ export async function POST(request: NextRequest) {
       const shuffledRoles = shuffle(roles);
       const shuffledPlayers = shuffle(connected);
       const assigned = shuffledRoles.map((role: any, index) => ({ userId: shuffledPlayers[index]?.user_id, roleId: role.id, alignment: role.alignment }));
-      if (new Set(assigned.map((item) => item.userId)).size !== PLAYER_COUNT) return unavailable("تعذر توزيع البطاقات");
-      for (const assignment of assigned) await supabase.from("mafioso_room_players").update({ role_id: assignment.roleId, alignment: assignment.alignment, status: "active", is_connected: true, role_acknowledged_at: null }).eq("room_id", room.id).eq("user_id", assignment.userId);
+      if (new Set(assigned.map((item) => item.userId)).size !== PLAYER_COUNT) return unavailable();
+      for (const assignment of assigned) {
+        const { error } = await supabase.from("mafioso_room_players").update({ role_id: assignment.roleId, alignment: assignment.alignment, status: "active", is_connected: true, role_acknowledged_at: null }).eq("room_id", room.id).eq("user_id", assignment.userId);
+        if (error) return unavailable(error);
+      }
       const endsAt = inSeconds(ROLE_REVEAL_SECONDS);
-      const { error: started } = await supabase.from("mafioso_rooms").update({ case_id: selectedCase.id, status: "role_reveal", round_number: 1, phase_ends_at: endsAt, current_clue_id: null, final_winner: null }).eq("id", room.id);
-      if (started) return unavailable(started);
-      await broadcastMafiosoEvent(supabase, code, "game_started", { endsAt });
+      const { data: started, error } = await supabase.from("mafioso_rooms").update({ case_id: selectedCase.id, status: "role_reveal", round_number: 1, phase_ends_at: endsAt, current_clue_id: null, final_winner: null, last_eliminated_user_id: null, last_eliminated_alignment: null }).eq("id", room.id).eq("status", "waiting").select("id").maybeSingle();
+      if (error) return unavailable(error);
+      if (!started) return noStoreJson({ error: "اللعبة بدأت بالفعل" }, { status: 409 });
+      await broadcastMafiosoEvent(supabase, code, "game_started", { endsAt, minReadSeconds: MIN_ROLE_READ_SECONDS });
       return noStoreJson({ ok: true, endsAt });
     }
 
     if (action === "acknowledge_role") {
       if (room.status !== "role_reveal") return noStoreJson({ error: "مرحلة الكروت انتهت" }, { status: 409 });
-      await supabase.from("mafioso_room_players").update({ role_acknowledged_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId);
+      const minReadEndsAt = room.phase_ends_at ? new Date(room.phase_ends_at).getTime() - (ROLE_REVEAL_SECONDS - MIN_ROLE_READ_SECONDS) * 1000 : 0;
+      if (Date.now() < minReadEndsAt) return noStoreJson({ error: "اقرأ كارتك 5 ثواني على الأقل قبل ما تكمل" }, { status: 409 });
+      const { error } = await supabase.from("mafioso_room_players").update({ role_acknowledged_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId);
+      if (error) return unavailable(error);
       const fresh = await getMembers(supabase, room.id);
-      if (fresh.filter((player) => player.status === "active").every((player) => player.role_acknowledged_at)) await startDiscussion(supabase, room);
+      if (fresh.filter((player) => player.status === "active").every((player) => player.role_acknowledged_at)) await startBossIntro(supabase, room);
       else await broadcastMafiosoEvent(supabase, code, "role_acknowledged", { userId: session.userId });
       return noStoreJson({ ok: true });
     }
@@ -262,7 +320,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "message") {
-      if (room.status !== "discussion" || me.status !== "active") return noStoreJson({ error: "الشات متاح للبريئين والمافيا الموجودين أثناء النقاش فقط" }, { status: 403 });
+      if (room.status !== "discussion" || me.status !== "active") return noStoreJson({ error: "الشات متاح للاعبين الموجودين أثناء النقاش فقط" }, { status: 403 });
       const message = typeof body.message === "string" ? body.message.trim().slice(0, 420) : "";
       if (!message) return noStoreJson({ error: "اكتب رسالتك" }, { status: 400 });
       const { data: inserted, error } = await supabase.from("mafioso_messages").insert({ room_id: room.id, round_number: room.round_number, user_id: session.userId, body: message }).select("id, created_at").single();
@@ -289,7 +347,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "leave_room") {
-      await supabase.from("mafioso_room_players").update({ is_connected: false, status: room.status === "waiting" ? "left" : me.status, last_seen_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId);
+      const { error } = await supabase.from("mafioso_room_players").update({ is_connected: false, status: room.status === "waiting" ? "left" : me.status, last_seen_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId);
+      if (error) return unavailable(error);
       await broadcastMafiosoEvent(supabase, code, "player_left", { userId: session.userId });
       return noStoreJson({ ok: true });
     }
