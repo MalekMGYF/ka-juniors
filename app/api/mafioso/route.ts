@@ -295,6 +295,18 @@ export async function POST(request: NextRequest) {
     const me = members.find((member) => member.user_id === session.userId);
     if (!me) return noStoreJson({ error: "ادخل الروم الأول" }, { status: 403 });
 
+    if (action === "close_room") {
+      if (room.created_by !== session.userId) return noStoreJson({ error: "صاحب الروم بس هو اللي يقدر يقفلها" }, { status: 403 });
+      if (room.status !== "waiting") return noStoreJson({ error: "الروم بدأت بالفعل ومينفعش تتقفل من الـLobby" }, { status: 409 });
+      const now = new Date().toISOString();
+      const { error: playersError } = await supabase.from("mafioso_room_players").update({ is_connected: false, status: "left", last_seen_at: now }).eq("room_id", room.id);
+      if (playersError) return unavailable(playersError);
+      const { error: roomError } = await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: now }).eq("id", room.id).eq("status", "waiting");
+      if (roomError) return unavailable(roomError);
+      await broadcastMafiosoEvent(supabase, code, "room_closed", { reason: "host_closed", closedBy: session.userId });
+      return noStoreJson({ ok: true });
+    }
+
     if (action === "start_game") {
       if (room.created_by !== session.userId) return noStoreJson({ error: "صاحب الروم هو اللي يبدأ" }, { status: 403 });
       if (room.status !== "waiting") return noStoreJson({ error: "اللعبة بدأت بالفعل" }, { status: 409 });
