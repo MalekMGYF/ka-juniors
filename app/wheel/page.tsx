@@ -116,7 +116,7 @@ export default function WheelPage() {
       avatarUrl={me?.avatar_url}
       frameColor={me?.equippedFrameColor}
     >
-      <div className="title-row">
+      <div className="title-row wheel-title-row">
         <div>
           <h2 style={{ margin: 0 }}>عجلة الحظ اليومية 🎡</h2>
           <p className="subtitle" style={{ marginBottom: 0 }}>
@@ -128,97 +128,35 @@ export default function WheelPage() {
       {loading ? (
         <div className="card empty">جاري التحميل...</div>
       ) : (
-        <div className="card" style={{ textAlign: "center" }}>
-          <div
-            style={{
-              position: "relative",
-              width: 260,
-              height: 260,
-              margin: "0 auto 24px"
-            }}
-          >
-            {/* المؤشر فوق العجلة */}
-            <div
-              style={{
-                position: "absolute",
-                top: -6,
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: 0,
-                height: 0,
-                borderLeft: "12px solid transparent",
-                borderRight: "12px solid transparent",
-                borderTop: "20px solid var(--gold)",
-                zIndex: 3
-              }}
-            />
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: "50%",
-                background: buildConicGradient(),
-                border: "4px solid var(--surface-2)",
-                boxShadow: "0 20px 50px rgba(0,0,0,0.45)",
-                position: "relative",
-                transition: spinning ? "transform 4.2s cubic-bezier(0.17, 0.85, 0.2, 1)" : "none",
-                transform: `rotate(${rotation}deg)`
-              }}
-            >
+        <div className="wheel-stage">
+          <div className="wheel-machine">
+            <span className="wheel-pointer" aria-hidden="true" />
+            <div className={`lucky-wheel ${spinning ? "is-spinning" : ""}`} style={{ background: buildConicGradient(), transform: `rotate(${rotation}deg)` }}>
               {SEGMENTS.map((s, i) => {
                 const angle = i * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
                 return (
                   <div
                     key={i}
-                    style={{
-                      position: "absolute",
-                      top: "50%",
-                      left: "50%",
-                      width: 0,
-                      height: 0,
-                      transform: `rotate(${angle}deg) translate(0, -95px) rotate(${-angle}deg)`
-                    }}
+                    className="wheel-segment-label"
+                    style={{ transform: `rotate(${angle}deg) translate(0, -112px) rotate(${-angle}deg)` }}
                   >
-                    <span
-                      style={{
-                        display: "block",
-                        transform: "translate(-50%, -50%)",
-                        color: "#fff",
-                        fontWeight: 700,
-                        fontSize: 15,
-                        textShadow: "0 1px 3px rgba(0,0,0,0.5)"
-                      }}
-                    >
-                      {s.label}
-                    </span>
+                    <span>{s.label}</span>
                   </div>
                 );
               })}
             </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                background: "var(--gold)",
-                border: "3px solid var(--surface)",
-                zIndex: 2
-              }}
-            />
+            <span className="wheel-hub">✦</span>
+            {Array.from({ length: 10 }).map((_, index) => <i className="wheel-light" style={{ transform: `rotate(${index * 36}deg) translateY(-47%)` }} key={index} />)}
           </div>
 
           {error && <div className="error-text">{error}</div>}
 
           {result !== null ? (
-            <div className={result > 0 ? "success-text" : "muted"} style={{ marginBottom: 16 }}>
+            <div className={`wheel-result ${result > 0 ? "won" : "missed"}`}>
               {result > 0 ? `🎉 مبروك! كسبت ${result} كوين` : "😅 حظ أوفر بكرة"}
             </div>
           ) : !canSpin ? (
-            <div className="muted" style={{ marginBottom: 16 }}>
+            <div className="wheel-result missed">
               {lastReward !== null && lastReward > 0
                 ? `لفيت النهاردة وكسبت ${lastReward} كوين`
                 : lastReward === 0
@@ -228,7 +166,7 @@ export default function WheelPage() {
             </div>
           ) : null}
 
-          <ShakeButton className="btn btn-gold" onClick={spin} disabled={!canSpin || spinning}>
+          <ShakeButton className="btn btn-gold wheel-spin-button" onClick={spin} disabled={!canSpin || spinning}>
             {spinning ? "بتلف..." : canSpin ? "لف العجلة" : "ارجع بكرة"}
           </ShakeButton>
         </div>
