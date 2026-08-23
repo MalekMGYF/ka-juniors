@@ -126,12 +126,20 @@ export async function DELETE(req: NextRequest) {
   const { caseId } = await req.json().catch(() => ({}));
   if (typeof caseId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(caseId)) return noStoreJson({ error: "حدد قضية صحيحة الأول" }, { status: 400 });
   try {
-    if (await hasOpenRoom(caseId)) return noStoreJson({ error: "مش هينفع تحذفها دلوقتي لأنها مرتبطة بروم شغالة. استنى اللعبة تخلص الأول." }, { status: 409 });
     const supabase = supabaseServer();
     const { data: existing, error: findError } = await supabase.from("mafioso_cases").select("reveal_audio_path").eq("id", caseId).maybeSingle();
     if (findError) throw findError;
     if (!existing) return noStoreJson({ error: "القضية دي اتحذفت بالفعل أو مش موجودة" }, { status: 404 });
-    const { error: detachError } = await supabase.from("mafioso_rooms").update({ case_id: null, current_clue_id: null }).eq("case_id", caseId).eq("status", "finished");
+    const { data: relatedRooms, error: roomsError } = await supabase.from("mafioso_rooms").select("id").eq("case_id", caseId);
+    if (roomsError) throw roomsError;
+    const roomIds = (relatedRooms || []).map((room) => room.id);
+    if (roomIds.length) {
+      const { error: closeRoomsError } = await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: new Date().toISOString() }).in("id", roomIds);
+      if (closeRoomsError) throw closeRoomsError;
+      const { error: disconnectError } = await supabase.from("mafioso_room_players").update({ is_connected: false, last_seen_at: new Date().toISOString() }).in("room_id", roomIds);
+      if (disconnectError) throw disconnectError;
+    }
+    const { error: detachError } = await supabase.from("mafioso_rooms").update({ case_id: null, current_clue_id: null }).eq("case_id", caseId);
     if (detachError) throw detachError;
     const { error: rolesError } = await supabase.from("mafioso_case_roles").delete().eq("case_id", caseId);
     if (rolesError) throw rolesError;
