@@ -349,6 +349,14 @@ export async function POST(request: NextRequest) {
     if (action === "leave_room") {
       const { error } = await supabase.from("mafioso_room_players").update({ is_connected: false, status: room.status === "waiting" ? "left" : me.status, last_seen_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId);
       if (error) return unavailable(error);
+      const { count: connectedCount, error: countError } = await supabase.from("mafioso_room_players").select("user_id", { count: "exact", head: true }).eq("room_id", room.id).eq("is_connected", true);
+      if (countError) return unavailable(countError);
+      const mustCloseRoom = room.status !== "finished" && (room.status !== "waiting" || (connectedCount || 0) === 0);
+      if (mustCloseRoom) {
+        const { error: closeError } = await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: new Date().toISOString() }).eq("id", room.id).neq("status", "finished");
+        if (closeError) return unavailable(closeError);
+        await broadcastMafiosoEvent(supabase, code, "room_closed", { reason: room.status === "waiting" ? "empty" : "player_left" });
+      }
       await broadcastMafiosoEvent(supabase, code, "player_left", { userId: session.userId });
       return noStoreJson({ ok: true });
     }
