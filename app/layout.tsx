@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./redesign.css";
 import type { Metadata } from "next";
 import SiteNotice from "../components/SiteNotice";
 import ThemeBootstrap from "../components/ThemeBootstrap";
