@@ -180,6 +180,27 @@ export async function GET(request: NextRequest) {
   const session = getSessionFromCookies();
   if (!session) return noStoreJson({ error: "لازم تسجل دخول" }, { status: 401 });
   const code = request.nextUrl.searchParams.get("code")?.trim().toUpperCase();
+  const wantsOpenRooms = request.nextUrl.searchParams.get("openRooms") === "1";
+  if (wantsOpenRooms) {
+    try {
+      const supabase = supabaseServer();
+      const { data: waitingRooms, error: roomsError } = await supabase.from("mafioso_rooms").select("id, code, created_by, created_at").eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
+      if (roomsError) throw roomsError;
+      const roomIds = (waitingRooms || []).map((room) => room.id);
+      if (!roomIds.length) return noStoreJson({ rooms: [] });
+      const { data: roomPlayers, error: playersError } = await supabase.from("mafioso_room_players").select("room_id, user_id, is_connected, status, users(nickname)").in("room_id", roomIds);
+      if (playersError) throw playersError;
+      const connectedByRoom = new Map<string, any[]>();
+      for (const player of roomPlayers || []) if (player.is_connected && player.status === "active") connectedByRoom.set(player.room_id, [...(connectedByRoom.get(player.room_id) || []), player]);
+      const emptyRoomIds = roomIds.filter((roomId) => !(connectedByRoom.get(roomId) || []).length);
+      if (emptyRoomIds.length) await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: new Date().toISOString() }).in("id", emptyRoomIds).eq("status", "waiting");
+      return noStoreJson({ rooms: (waitingRooms || []).map((room) => {
+        const connected = connectedByRoom.get(room.id) || [];
+        const host = connected.find((player) => player.user_id === room.created_by);
+        return { code: room.code, hostNickname: host?.users?.nickname || "صاحب الروم", playerCount: connected.length, seatsLeft: Math.max(0, PLAYER_COUNT - connected.length) };
+      }).filter((room) => room.playerCount > 0 && room.playerCount < PLAYER_COUNT) });
+    } catch (error) { return unavailable(error); }
+  }
   if (!code) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId });
   try {
     const supabase = supabaseServer();
