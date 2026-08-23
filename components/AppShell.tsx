@@ -74,9 +74,8 @@ export default function AppShell({
     <div className="page">
       <div className="topbar ka-topbar">
         <a className="ka-brand" href="/profile" aria-label="K.A Juniors - البروفايل">
-          <span className="ka-brand-monogram" aria-hidden="true"><b>K</b><i>A</i></span>
-          <span className="ka-brand-copy"><b>KA</b><small>Juniors</small></span>
-          <span className="ka-brand-bubble" aria-hidden="true">✦</span>
+          <span className="ka-brand-word" aria-hidden="true">KA</span>
+          <span className="ka-brand-bubble" aria-hidden="true"><i /><i /><i /></span>
         </a>
         <div className="ka-topbar-actions">
           <button className="games-navigator" onClick={() => setMenuOpen(true)} aria-label="فتح كل الألعاب" aria-expanded={menuOpen}>
