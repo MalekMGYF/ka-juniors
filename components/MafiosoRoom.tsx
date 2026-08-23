@@ -8,6 +8,8 @@ import { mafiosoChannelName } from "../lib/mafioso-channel";
 type Snapshot = any;
 type Props = { code: string; onLeave: () => void };
 const positions = ["north", "east-top", "east-bottom", "south", "west"];
+const ROOM_LOAD_TIMEOUT_MS = 9000;
+const MAX_ROOM_LOAD_RETRIES = 2;
 
 function playBossChime() {
   try {
@@ -39,16 +41,46 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const previousStatus = useRef<string | null>(null);
+  const loadInFlight = useRef(false);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<number | null>(null);
 
-  async function load() {
-    const res = await fetch(`/api/mafioso?code=${encodeURIComponent(code)}`, { cache: "no-store" }).catch(() => null);
-    const next = res ? await res.json().catch(() => ({})) : {};
+  async function load(manualRetry = false) {
+    if (loadInFlight.current) return;
+    if (manualRetry) {
+      retryCount.current = 0;
+      setError("");
+      setLoading(true);
+    }
+    loadInFlight.current = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), ROOM_LOAD_TIMEOUT_MS);
+    let res: Response | null = null;
+    let next: any = {};
+    try {
+      res = await fetch(`/api/mafioso?code=${encodeURIComponent(code)}`, { cache: "no-store", signal: controller.signal });
+      next = await res.json().catch(() => ({}));
+    } catch {}
+    finally {
+      window.clearTimeout(timeout);
+      loadInFlight.current = false;
+    }
     if (res?.ok && next.room) {
+      retryCount.current = 0;
       setData(next);
       setError("");
-    } else {
-      setError(next.error || "الروم دي مش موجودة أو اتقفلت. ارجع للـLobby واعمل روم جديدة.");
+      setLoading(false);
+      return;
     }
+    const retryable = !res || res.status >= 500;
+    if (retryable && retryCount.current < MAX_ROOM_LOAD_RETRIES) {
+      retryCount.current += 1;
+      const retryAfter = retryCount.current * 1300;
+      setError(`الاتصال بالروم اتأخر، بنحاول تاني تلقائيًا… (${retryCount.current}/${MAX_ROOM_LOAD_RETRIES})`);
+      retryTimer.current = window.setTimeout(() => void load(), retryAfter);
+      return;
+    }
+    setError(next.error || "مش قادرين نوصل لبيانات الروم دلوقتي. اتأكد من النت وحاول تاني.");
     setLoading(false);
   }
 
@@ -67,11 +99,11 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
     void load();
     const timer = window.setInterval(() => { setNow(Date.now()); void load(); }, 3000);
     const client = getSupabaseBrowserClient();
-    if (!client) return () => window.clearInterval(timer);
+    if (!client) return () => { window.clearInterval(timer); if (retryTimer.current) window.clearTimeout(retryTimer.current); };
     const channel = client.channel(mafiosoChannelName(code), { config: { broadcast: { self: false } } });
     ["player_joined", "player_left", "room_closed", "game_started", "role_acknowledged", "boss_intro_started", "boss_intro_acknowledged", "clue_announced", "discussion_started", "vote_ready_changed", "vote_announcement_started", "voting_started", "message_created", "vote_cast", "vote_resolved", "game_finished"].forEach((event) => channel.on("broadcast", { event }, () => void load()));
     channel.subscribe();
-    return () => { window.clearInterval(timer); void client.removeChannel(channel); };
+    return () => { window.clearInterval(timer); if (retryTimer.current) window.clearTimeout(retryTimer.current); void client.removeChannel(channel); };
   }, [code]);
 
   const roomStatus = data?.room?.status;
@@ -102,7 +134,7 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
   const bossIntro = data?.bossIntro || { acknowledgedCount: 0, requiredCount: 0, isYouAcknowledged: false, canAcknowledge: false };
   const finalTwoVote = Boolean(data?.finalTwoVote);
 
-  if (!data) return <div className="card empty mafioso-room-load-state"><b>{loading ? "جاري فتح غرفة القضية…" : "مش قادرين نفتح الروم"}</b>{!loading && <><p>{error}</p><button className="mafioso-primary" type="button" onClick={onLeave}>ارجع للـLobby</button></>}</div>;
+  if (!data) return <div className="card empty mafioso-room-load-state"><b>{loading ? "جاري فتح غرفة القضية…" : "مش قادرين نفتح الروم"}</b>{error && <p>{error}</p>}{!loading && <div className="mafioso-room-load-actions"><button className="mafioso-primary" type="button" onClick={() => void load(true)}>حاول تاني</button><button className="mafioso-secondary" type="button" onClick={onLeave}>ارجع للـLobby</button></div>}</div>;
   return <section className="mafioso-room-shell mafioso-v2-shell">
     <header className="mafioso-room-head"><div><span>✦ ملف التحقيق · {code}</span><h1>{data.case?.title || "قضية قيد التحضير"}</h1><p>{data.case?.subtitle || "استنوا كشف البطاقات"}</p></div><div className="mafioso-clock"><small>{phaseLabel}</small><strong>{finished ? "✦" : time}</strong></div></header>
     <div className="mafioso-stage mafioso-v2-stage">
