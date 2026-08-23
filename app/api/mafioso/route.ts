@@ -25,7 +25,7 @@ type Room = {
   final_winner: "mafia" | "innocent" | null; last_eliminated_user_id: string | null;
   last_eliminated_alignment: "mafia" | "innocent" | null;
 };
-type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null };
+type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null; discussion_ready_round: number | null };
 
 function roomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,7 +48,7 @@ function unavailable(error?: unknown) {
 }
 
 async function getMembers(supabase: Db, roomId: string) {
-  const { data, error } = await supabase.from("mafioso_room_players").select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at").eq("room_id", roomId).order("joined_at", { ascending: true });
+  const { data, error } = await supabase.from("mafioso_room_players").select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at, discussion_ready_round").eq("room_id", roomId).order("joined_at", { ascending: true });
   if (error) throw error;
   return (data || []) as Member[];
 }
@@ -90,6 +90,8 @@ async function startClueReveal(supabase: Db, room: Room) {
 
 async function startDiscussion(supabase: Db, room: Room) {
   const endsAt = inSeconds(DISCUSSION_SECONDS);
+  const { error: resetError } = await supabase.from("mafioso_room_players").update({ discussion_ready_round: null }).eq("room_id", room.id);
+  if (resetError) throw resetError;
   const { data, error } = await supabase.from("mafioso_rooms").update({ status: "discussion", phase_ends_at: endsAt }).eq("id", room.id).eq("status", "clue_reveal").select("id").maybeSingle();
   if (error) throw error;
   if (data) await broadcastMafiosoEvent(supabase, room.code, "discussion_started", { roundNumber: room.round_number, endsAt });
@@ -240,7 +242,7 @@ export async function GET(request: NextRequest) {
         const nickname = (userMap.get(member.user_id) as any)?.nickname || "لاعب";
         const publicRoleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
         const revealedAlignment = member.status === "eliminated" || room.status === "finished" ? member.alignment : null;
-        return { userId: member.user_id, nickname, displayName: publicRoleName ? `${publicRoleName} ${nickname}` : nickname, publicRoleName, revealedAlignment, avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0 };
+        return { userId: member.user_id, nickname, displayName: publicRoleName ? `${publicRoleName} ${nickname}` : nickname, publicRoleName, revealedAlignment, avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0, isReadyForVote: room.status === "discussion" && member.status === "active" && member.discussion_ready_round === room.round_number };
       }),
       motives: (rolesResult as any[]).map((role) => ({ roleName: role.role_name, motive: role.public_motive })),
       ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.alignment === "mafia" ? "أنت من فريق المافيوسو. خليك هادي وما تكشفش انتماءك." : "أنت من فريق البريئين. ركّز في كلام مافيا بوص والأدلة." , alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
@@ -248,6 +250,12 @@ export async function GET(request: NextRequest) {
       lastVote: { eliminatedName: lastEliminatedName, alignment: room.last_eliminated_alignment, mafiaLeft, isTie: !room.last_eliminated_user_id },
       messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: publicPlayerNames.get(message.user_id) || message.users?.nickname || "لاعب" })),
       canChat: room.status === "discussion" && me?.status === "active",
+      discussionReady: {
+        readyCount: members.filter((member) => member.status === "active" && member.discussion_ready_round === room.round_number).length,
+        requiredCount: members.filter((member) => member.status === "active").length,
+        isYouReady: room.status === "discussion" && me?.status === "active" && me.discussion_ready_round === room.round_number,
+        canRequestVote: room.status === "discussion" && me?.status === "active"
+      },
       canVote: room.status === "voting" && Boolean(me) && eligibleVoters(members).includes(session.userId),
       hasVoted: Boolean((await supabase.from("mafioso_votes").select("id").eq("room_id", room.id).eq("round_number", room.round_number).eq("voter_id", session.userId).maybeSingle()).data)
     });
@@ -324,7 +332,7 @@ export async function POST(request: NextRequest) {
       const assigned = shuffledRoles.map((role: any, index) => ({ userId: shuffledPlayers[index]?.user_id, roleId: role.id, alignment: role.alignment }));
       if (new Set(assigned.map((item) => item.userId)).size !== PLAYER_COUNT) return unavailable();
       for (const assignment of assigned) {
-        const { error } = await supabase.from("mafioso_room_players").update({ role_id: assignment.roleId, alignment: assignment.alignment, status: "active", is_connected: true, role_acknowledged_at: null }).eq("room_id", room.id).eq("user_id", assignment.userId);
+        const { error } = await supabase.from("mafioso_room_players").update({ role_id: assignment.roleId, alignment: assignment.alignment, status: "active", is_connected: true, role_acknowledged_at: null, discussion_ready_round: null }).eq("room_id", room.id).eq("user_id", assignment.userId);
         if (error) return unavailable(error);
       }
       const endsAt = inSeconds(ROLE_REVEAL_SECONDS);
@@ -360,6 +368,19 @@ export async function POST(request: NextRequest) {
       if (error || !inserted) return unavailable(error);
       await broadcastMafiosoEvent(supabase, code, "message_created", { id: inserted.id, userId: session.userId, author: session.nickname, body: message, createdAt: inserted.created_at });
       return noStoreJson({ ok: true, messageId: inserted.id });
+    }
+
+    if (action === "ready_for_vote") {
+      if (room.status !== "discussion") return noStoreJson({ error: "الزر ده متاح أثناء النقاش فقط" }, { status: 409 });
+      if (me.status !== "active") return noStoreJson({ error: "اللاعبين اللي لسه في القضية بس يقدروا يجهزوا للتصويت" }, { status: 403 });
+      const { data: updated, error } = await supabase.from("mafioso_room_players").update({ discussion_ready_round: room.round_number }).eq("room_id", room.id).eq("user_id", session.userId).eq("status", "active").select("user_id").maybeSingle();
+      if (error || !updated) return unavailable(error);
+      const fresh = await getMembers(supabase, room.id);
+      const activePlayers = fresh.filter((player) => player.status === "active");
+      const allReady = activePlayers.length > 0 && activePlayers.every((player) => player.discussion_ready_round === room.round_number);
+      await broadcastMafiosoEvent(supabase, code, "vote_ready_changed", { userId: session.userId, roundNumber: room.round_number, readyCount: activePlayers.filter((player) => player.discussion_ready_round === room.round_number).length, requiredCount: activePlayers.length });
+      if (allReady) await startVoteAnnouncement(supabase, room);
+      return noStoreJson({ ok: true, allReady });
     }
 
     if (action === "vote") {
