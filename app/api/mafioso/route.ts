@@ -49,6 +49,23 @@ type Room = {
 };
 type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null; boss_intro_acknowledged_at: string | null; discussion_ready_round: number | null; rematch_ready_at: string | null };
 
+type MissionKey = "first_vote_mafia" | "case_talker" | "survivor";
+const DAILY_MISSIONS: Array<{ key: MissionKey; title: string; note: string }> = [
+  { key: "first_vote_mafia", title: "عين الصقر", note: "صوّت على مافيوسو في أول تصويت لك" },
+  { key: "case_talker", title: "صوت التحقيق", note: "اكتب 5 رسائل مناسبة أثناء النقاش" },
+  { key: "survivor", title: "آخر شاهد", note: "وصل للنهاية مع الفريق الفائز" }
+];
+
+function fallbackEvent(roundNumber: number) {
+  const events = [
+    "صوت خطوات اتسمع عند باب المكان، لكن محدش قدر يحدد جاي منين.",
+    "ورقة مجهولة ظهرت على الترابيزة: حد فيكم كان عارف بموعد الجريمة.",
+    "الساعة وقفت دقيقة كاملة؛ كل واحد يراجع آخر حاجة قالها قبلها.",
+    "شاهد جديد غيّر تفصيلة صغيرة في كلامه، وده يخلّي كل الدوافع تحت المراجعة."
+  ];
+  return events[Math.max(0, roundNumber - 1) % events.length];
+}
+
 function roomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return `MF-${Array.from({ length: 4 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
@@ -86,9 +103,16 @@ async function getRoom(supabase: Db, code: string) {
 }
 
 async function getCaseRoles(supabase: Db, caseId: string) {
-  const { data, error } = await supabase.from("mafioso_case_roles").select("id, role_name, public_motive, private_card_text, alignment, sort_order").eq("case_id", caseId).order("sort_order");
+  const { data, error } = await supabase.from("mafioso_case_roles").select("id, role_name, public_motive, private_card_text, special_ability, alignment, sort_order").eq("case_id", caseId).order("sort_order");
   if (error) throw error;
   return data || [];
+}
+
+async function getCaseEvent(supabase: Db, room: Room) {
+  if (!room.case_id) return fallbackEvent(room.round_number);
+  const { data, error } = await supabase.from("mafioso_case_events").select("event_text").eq("case_id", room.case_id).eq("round_number", room.round_number).eq("is_active", true).maybeSingle();
+  if (error) throw error;
+  return data?.event_text || fallbackEvent(room.round_number);
 }
 
 async function getClue(supabase: Db, room: Room) {
@@ -256,15 +280,20 @@ export async function GET(request: NextRequest) {
     const me = members.find((member) => member.user_id === session.userId);
     if (!me) return noStoreJson({ error: "ادخل الروم الأول قبل ما تشوف تفاصيل القضية" }, { status: 403 });
     const visibleClueThrough = room.current_clue_id ? room.round_number : Math.max(0, room.round_number - 1);
-    const [usersResult, messagesResult, caseResult, rolesResult, clueResult, clueHistoryResult, votesResult, allVotesResult] = await Promise.all([
+    const missionDate = new Date().toISOString().slice(0, 10);
+    const [usersResult, messagesResult, caseResult, rolesResult, clueResult, clueHistoryResult, eventResult, votesResult, allVotesResult, suspicionsResult, inspectionResult, missionClaimsResult] = await Promise.all([
       supabase.from("mafioso_room_players").select("user_id, users(nickname, avatar_url)").eq("room_id", room.id),
       supabase.from("mafioso_messages").select("id, user_id, body, created_at, users(nickname)").eq("room_id", room.id).order("created_at").limit(120),
-      room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path, difficulty").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
+      room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path, difficulty, special_roles_enabled").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
       room.case_id ? getCaseRoles(supabase, room.case_id) : Promise.resolve([]),
       room.current_clue_id ? supabase.from("mafioso_case_clues").select("clue_text").eq("id", room.current_clue_id).maybeSingle() : Promise.resolve({ data: null } as any),
       room.case_id && room.status !== "waiting" && visibleClueThrough > 0 ? supabase.from("mafioso_case_clues").select("round_number, clue_text").eq("case_id", room.case_id).lte("round_number", visibleClueThrough).order("round_number") : Promise.resolve({ data: [] } as any),
+      room.status === "discussion" ? getCaseEvent(supabase, room) : Promise.resolve(null),
       supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", room.round_number),
-      room.status === "finished" ? supabase.from("mafioso_votes").select("voter_id, target_id").eq("room_id", room.id) : Promise.resolve({ data: [] } as any)
+      room.status === "finished" ? supabase.from("mafioso_votes").select("voter_id, target_id").eq("room_id", room.id) : Promise.resolve({ data: [] } as any),
+      room.status === "discussion" ? supabase.from("mafioso_room_suspicions").select("target_id, voter_id").eq("room_id", room.id).eq("round_number", room.round_number) : Promise.resolve({ data: [] } as any),
+      supabase.from("mafioso_inspections").select("target_id, result_alignment").eq("room_id", room.id).eq("user_id", session.userId).maybeSingle(),
+      supabase.from("mafioso_daily_mission_claims").select("mission_key").eq("user_id", session.userId).eq("mission_date", missionDate)
     ]);
     const userMap = new Map(((usersResult.data || []) as any[]).map((row) => [row.user_id, row.users]));
     const roleMap = new Map((rolesResult as any[]).map((role) => [role.id, role]));
@@ -282,6 +311,10 @@ export async function GET(request: NextRequest) {
     const isFinalTwoVote = members.filter((member) => member.status === "active").length <= 2;
     const finalEligibleVoters = isFinalTwoVote ? eligibleVoters(members) : [];
     const messagesForAwards = (messagesResult.data || []) as any[];
+    const suspicionCounts = new Map<string, number>();
+    for (const suspicion of ((suspicionsResult as any).data || []) as any[]) suspicionCounts.set(suspicion.target_id, (suspicionCounts.get(suspicion.target_id) || 0) + 1);
+    const mySuspicion = ((suspicionsResult as any).data || []).find((item: any) => item.voter_id === session.userId);
+    const claimedMissions = new Set(((missionClaimsResult as any).data || []).map((claim: any) => claim.mission_key));
     const messageCounts = new Map<string, number>();
     for (const message of messagesForAwards) messageCounts.set(message.user_id, (messageCounts.get(message.user_id) || 0) + 1);
     const correctVoteCounts = new Map<string, number>();
@@ -304,7 +337,7 @@ export async function GET(request: NextRequest) {
       configured: true,
       sessionUserId: session.userId,
       room: { ...room, isHost: room.created_by === session.userId },
-      case: caseResult.data ? { title: caseResult.data.title, subtitle: caseResult.data.subtitle, briefing: caseResult.data.briefing, difficulty: caseResult.data.difficulty || "medium", revealTitle: room.status === "finished" ? caseResult.data.reveal_title : null, revealStory: room.status === "finished" ? caseResult.data.reveal_story : null, revealAudioPath: room.status === "finished" && caseResult.data.reveal_audio_path ? supabase.storage.from("mafioso-media").getPublicUrl(caseResult.data.reveal_audio_path).data.publicUrl : null } : null,
+      case: caseResult.data ? { title: caseResult.data.title, subtitle: caseResult.data.subtitle, briefing: caseResult.data.briefing, difficulty: caseResult.data.difficulty || "medium", specialRolesEnabled: Boolean(caseResult.data.special_roles_enabled), revealTitle: room.status === "finished" ? caseResult.data.reveal_title : null, revealStory: room.status === "finished" ? caseResult.data.reveal_story : null, revealAudioPath: room.status === "finished" && caseResult.data.reveal_audio_path ? supabase.storage.from("mafioso-media").getPublicUrl(caseResult.data.reveal_audio_path).data.publicUrl : null } : null,
       players: members.map((member) => {
         const nickname = (userMap.get(member.user_id) as any)?.nickname || "لاعب";
         const publicRoleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
@@ -312,9 +345,13 @@ export async function GET(request: NextRequest) {
         return { userId: member.user_id, nickname, displayName: publicRoleName ? `${publicRoleName} ${nickname}` : nickname, publicRoleName, revealedAlignment, avatarUrl: (userMap.get(member.user_id) as any)?.avatar_url || null, status: member.status, isConnected: member.is_connected, isYou: member.user_id === session.userId, voteCount: voteCounts.get(member.user_id) || 0, isReadyForVote: room.status === "discussion" && member.status === "active" && member.discussion_ready_round === room.round_number, isBossIntroAcknowledged: room.status === "boss_intro" && member.status === "active" && Boolean(member.boss_intro_acknowledged_at) };
       }),
       motives: (rolesResult as any[]).map((role) => ({ roleName: role.role_name, motive: role.public_motive })),
-      ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.alignment === "mafia" ? "أنت من فريق المافيوسو. خليك هادي وما تكشفش انتماءك." : "أنت من فريق البريئين. ركّز في كلام مافيا بوص والأدلة." , alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
+      ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.alignment === "mafia" ? "أنت من فريق المافيوسو. خليك هادي وما تكشفش انتماءك." : "أنت من فريق البريئين. ركّز في كلام مافيا بوص والأدلة." , alignment: ownRole.alignment, specialAbility: caseResult.data?.special_roles_enabled ? ownRole.special_ability || null : null, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
       currentClue: (clueResult as any).data?.clue_text || null,
+      currentEvent: room.status === "discussion" ? (eventResult as string | null) : null,
       investigationLog: ((clueHistoryResult as any).data || []).map((clue: any) => ({ roundNumber: clue.round_number, clueText: clue.clue_text })),
+      suspicions: { counts: Object.fromEntries(suspicionCounts), isYouSet: Boolean(mySuspicion), yourTargetId: mySuspicion?.target_id || null },
+      inspection: caseResult.data?.special_roles_enabled && ownRole?.special_ability === "investigator" ? ((inspectionResult as any).data ? { targetId: (inspectionResult as any).data.target_id, alignment: (inspectionResult as any).data.result_alignment } : null) : null,
+      dailyMissions: DAILY_MISSIONS.map((mission) => ({ ...mission, completed: claimedMissions.has(mission.key) })),
       awards,
       lastVote: { eliminatedName: lastEliminatedName, alignment: room.last_eliminated_alignment, mafiaLeft, isTie: !room.last_eliminated_user_id },
       messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: publicPlayerNames.get(message.user_id) || message.users?.nickname || "لاعب" })),
@@ -416,13 +453,15 @@ export async function POST(request: NextRequest) {
       const expectedClueCount = clueCountFor(roomPlayerCount);
       const connected = members.filter((member) => member.is_connected && member.status === "active");
       if (connected.length !== roomPlayerCount) return noStoreJson({ error: `لازم تدخلوا ${roomPlayerCount} لاعبين بالظبط عشان تبدأ القضية` }, { status: 409 });
-      let casesQuery = supabase.from("mafioso_cases").select("id").eq("is_active", true).eq("player_count", roomPlayerCount);
+      let casesQuery = supabase.from("mafioso_cases").select("id, special_roles_enabled").eq("is_active", true).eq("player_count", roomPlayerCount);
       if (difficultyFor(room.difficulty_preference) !== "any") casesQuery = casesQuery.eq("difficulty", difficultyFor(room.difficulty_preference));
       const { data: cases, error: caseError } = await casesQuery;
       if (caseError || !cases?.length) return noStoreJson({ error: "ضيف قضية مفعّلة من الأدمن الأول" }, { status: 409 });
       const selectedCase = cases[Math.floor(Math.random() * cases.length)];
       const roles = await getCaseRoles(supabase, selectedCase.id);
+      const specialRolesEnabled = Boolean((selectedCase as any).special_roles_enabled);
       if (roles.length !== roomPlayerCount || roles.filter((role: any) => role.alignment === "mafia").length !== expectedMafiaCount || roles.filter((role: any) => role.alignment === "innocent").length !== roomPlayerCount - expectedMafiaCount) return noStoreJson({ error: roomPlayerCount === 4 ? "قضية الأربع لاعبين لازم يكون فيها 4 شخصيات: مافيوسو واحد و3 بريئين" : "قضية الخمسة لاعبين لازم يكون فيها 5 شخصيات: 2 مافيوسو و3 بريئين" }, { status: 409 });
+      if (specialRolesEnabled && roles.filter((role: any) => role.special_ability === "investigator").length !== 1) return noStoreJson({ error: "القضية الخاصة لازم تحتوي على دور محقق واحد بالضبط" }, { status: 409 });
       const clues = await supabase.from("mafioso_case_clues").select("id").eq("case_id", selectedCase.id);
       if ((clues.data || []).length !== expectedClueCount) return noStoreJson({ error: `القضية دي لازم يكون فيها ${expectedClueCount} أدلة بالظبط` }, { status: 409 });
       const shuffledRoles = shuffle(roles);
@@ -494,6 +533,50 @@ export async function POST(request: NextRequest) {
       await broadcastMafiosoEvent(supabase, code, "vote_ready_changed", { userId: session.userId, roundNumber: room.round_number, readyCount: activePlayers.filter((player) => player.discussion_ready_round === room.round_number).length, requiredCount: activePlayers.length });
       if (allReady) await startVoteAnnouncement(supabase, room);
       return noStoreJson({ ok: true, allReady });
+    }
+
+    if (action === "set_suspicion") {
+      if (room.status !== "discussion" || me.status !== "active") return noStoreJson({ error: "الشك متاح للاعبين الموجودين أثناء النقاش فقط" }, { status: 403 });
+      const targetId = typeof body.targetId === "string" ? body.targetId : "";
+      if (!targetId || targetId === session.userId) return noStoreJson({ error: "اختار لاعب تاني" }, { status: 400 });
+      if (!members.some((player) => player.user_id === targetId && player.status === "active")) return noStoreJson({ error: "اختار لاعب لسه جوه القضية" }, { status: 400 });
+      const { error } = await supabase.from("mafioso_room_suspicions").upsert({ room_id: room.id, round_number: room.round_number, voter_id: session.userId, target_id: targetId }, { onConflict: "room_id,round_number,voter_id" });
+      if (error) return unavailable(error);
+      await broadcastMafiosoEvent(supabase, code, "suspicion_changed", { userId: session.userId });
+      return noStoreJson({ ok: true });
+    }
+
+    if (action === "inspect_player") {
+      if (room.status !== "discussion" || me.status !== "active") return noStoreJson({ error: "المحقق يقدر يستخدم قدرته أثناء النقاش فقط" }, { status: 403 });
+      const role = me.role_id ? (await getCaseRoles(supabase, room.case_id || "")).find((item: any) => item.id === me.role_id) as any : null;
+      if (!role || role.special_ability !== "investigator") return noStoreJson({ error: "الدور ده معندوش قدرة المحقق" }, { status: 403 });
+      const targetId = typeof body.targetId === "string" ? body.targetId : "";
+      if (!targetId || targetId === session.userId) return noStoreJson({ error: "اختار لاعب تاني" }, { status: 400 });
+      const target = members.find((player) => player.user_id === targetId && player.status === "active");
+      if (!target) return noStoreJson({ error: "اختار لاعب لسه جوه القضية" }, { status: 400 });
+      const { data: existing } = await supabase.from("mafioso_inspections").select("target_id, result_alignment").eq("room_id", room.id).eq("user_id", session.userId).maybeSingle();
+      if (existing) return noStoreJson({ error: "استخدمت قدرة المحقق قبل كده في القضية" }, { status: 409 });
+      const { error } = await supabase.from("mafioso_inspections").insert({ room_id: room.id, user_id: session.userId, target_id: targetId, result_alignment: target.alignment });
+      if (error) return unavailable(error);
+      await broadcastMafiosoEvent(supabase, code, "inspection_completed", { userId: session.userId });
+      return noStoreJson({ ok: true, alignment: target.alignment });
+    }
+
+    if (action === "claim_mission") {
+      if (room.status !== "finished" || !room.final_winner) return noStoreJson({ error: "المهمات بتتحسب بعد نهاية القضية" }, { status: 409 });
+      const missionKey = body.missionKey as MissionKey;
+      if (!DAILY_MISSIONS.some((mission) => mission.key === missionKey)) return noStoreJson({ error: "المهمة غير موجودة" }, { status: 400 });
+      const missionDate = new Date().toISOString().slice(0, 10);
+      const { data: alreadyClaimed } = await supabase.from("mafioso_daily_mission_claims").select("mission_key").eq("user_id", session.userId).eq("mission_key", missionKey).eq("mission_date", missionDate).maybeSingle();
+      if (alreadyClaimed) return noStoreJson({ ok: true, alreadyClaimed: true });
+      const allMessages = await supabase.from("mafioso_messages").select("id").eq("room_id", room.id).eq("user_id", session.userId);
+      const firstVote = await supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", 1).eq("voter_id", session.userId).maybeSingle();
+      const targetAlignment = members.find((member) => member.user_id === firstVote.data?.target_id)?.alignment;
+      const verified = missionKey === "case_talker" ? (allMessages.data || []).length >= 5 : missionKey === "first_vote_mafia" ? targetAlignment === "mafia" : me.status === "active" && me.alignment === room.final_winner;
+      if (!verified) return noStoreJson({ error: "المهمة دي لسه ما اكتملتش" }, { status: 409 });
+      const { error } = await supabase.from("mafioso_daily_mission_claims").insert({ user_id: session.userId, mission_key: missionKey, mission_date: missionDate });
+      if (error && !/duplicate|unique/i.test(error.message)) return unavailable(error);
+      return noStoreJson({ ok: true });
     }
 
     if (action === "vote") {

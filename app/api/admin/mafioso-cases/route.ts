@@ -9,7 +9,8 @@ export const runtime = "nodejs";
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const ALLOWED_AUDIO_TYPES = new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/ogg"]);
-type RoleInput = { roleName: string; publicMotive: string; privateCardText: string; alignment: "mafia" | "innocent" };
+type RoleInput = { roleName: string; publicMotive: string; privateCardText: string; alignment: "mafia" | "innocent"; specialAbility: "investigator" | null };
+type EventInput = { roundNumber: number; eventText: string };
 type PlayerCount = 4 | 5;
 type Difficulty = "easy" | "medium" | "hard";
 
@@ -33,10 +34,19 @@ function parseRoles(raw: FormDataEntryValue | null, playerCount: PlayerCount): R
   try {
     const value = JSON.parse(String(raw || "[]"));
     if (!Array.isArray(value) || value.length !== playerCount) return null;
-    const roles = value.map((item) => ({ roleName: String(item?.roleName || "").trim(), publicMotive: String(item?.publicMotive || "").trim(), privateCardText: String(item?.privateCardText || "").trim(), alignment: item?.alignment }));
+    const roles = value.map((item) => ({ roleName: String(item?.roleName || "").trim(), publicMotive: String(item?.publicMotive || "").trim(), privateCardText: String(item?.privateCardText || "").trim(), alignment: item?.alignment, specialAbility: item?.specialAbility === "investigator" ? "investigator" : null }));
     if (roles.some((role) => !role.roleName || role.roleName.length > 60 || !role.publicMotive || role.publicMotive.length > 500 || !role.privateCardText || role.privateCardText.length > 1000 || !["mafia", "innocent"].includes(role.alignment))) return null;
     if (roles.filter((role) => role.alignment === "mafia").length !== (playerCount === 4 ? 1 : 2) || new Set(roles.map((role) => role.roleName)).size !== playerCount) return null;
     return roles as RoleInput[];
+  } catch { return null; }
+}
+function parseEvents(raw: FormDataEntryValue | null): EventInput[] | null {
+  try {
+    const value = JSON.parse(String(raw || "[]"));
+    if (!Array.isArray(value) || value.length > 5) return null;
+    const events = value.map((item) => ({ roundNumber: Number(item?.roundNumber), eventText: String(item?.eventText || "").trim() }));
+    if (events.some((event) => !Number.isInteger(event.roundNumber) || event.roundNumber < 1 || event.roundNumber > 5 || event.eventText.length < 4 || event.eventText.length > 240) || new Set(events.map((event) => event.roundNumber)).size !== events.length) return null;
+    return events as EventInput[];
   } catch { return null; }
 }
 function parseClues(raw: FormDataEntryValue | null, playerCount: PlayerCount): string[] | null {
@@ -78,12 +88,12 @@ async function hasOpenRoom(caseId: string) {
   return connectedRoomIds.size > 0;
 }
 function publicCases(rows: any[]) {
-  return rows.map((row) => ({ ...row, roles: (row.mafioso_case_roles || []).sort((a: any, b: any) => a.sort_order - b.sort_order), clues: (row.mafioso_case_clues || []).sort((a: any, b: any) => a.round_number - b.round_number) }));
+  return rows.map((row) => ({ ...row, roles: (row.mafioso_case_roles || []).sort((a: any, b: any) => a.sort_order - b.sort_order), clues: (row.mafioso_case_clues || []).sort((a: any, b: any) => a.round_number - b.round_number), events: (row.mafioso_case_events || []).sort((a: any, b: any) => a.round_number - b.round_number) }));
 }
 
 export async function GET() {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
-  const { data, error } = await supabaseServer().from("mafioso_cases").select("id,title,subtitle,briefing,reveal_title,reveal_story,reveal_audio_path,is_active,player_count,difficulty,created_at,mafioso_case_roles(id,role_name,public_motive,private_card_text,alignment,sort_order),mafioso_case_clues(id,round_number,clue_text)").order("created_at", { ascending: false });
+  const { data, error } = await supabaseServer().from("mafioso_cases").select("id,title,subtitle,briefing,reveal_title,reveal_story,reveal_audio_path,is_active,player_count,difficulty,special_roles_enabled,created_at,mafioso_case_roles(id,role_name,public_motive,private_card_text,special_ability,alignment,sort_order),mafioso_case_clues(id,round_number,clue_text),mafioso_case_events(id,round_number,event_text,is_active)").order("created_at", { ascending: false });
   if (error) return noStoreJson({ error: "شغّل SQL مافيوسو في Supabase الأول" }, { status: 500 });
   return noStoreJson({ cases: publicCases(data || []) });
 }
@@ -92,18 +102,19 @@ export async function POST(req: NextRequest) {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
   const form = await req.formData();
   const title = String(form.get("title") || "").trim(); const subtitle = String(form.get("subtitle") || "").trim(); const briefing = String(form.get("briefing") || "").trim(); const revealTitle = String(form.get("revealTitle") || "الحقيقة الكاملة").trim(); const revealStory = String(form.get("revealStory") || "").trim();
-  const playerCount = parsePlayerCount(form.get("playerCount")); const difficulty = parseDifficulty(form.get("difficulty")); const roles = playerCount ? parseRoles(form.get("roles"), playerCount) : null; const clues = playerCount ? parseClues(form.get("clues"), playerCount) : null; const audio = form.get("revealAudio"); const isActive = String(form.get("isActive")) !== "false";
-  if (title.length < 3 || title.length > 90 || subtitle.length > 300 || briefing.length > 1200 || revealTitle.length < 3 || revealTitle.length > 120 || revealStory.length < 10 || revealStory.length > 3500 || !playerCount || !difficulty || !roles || !clues) return noStoreJson({ error: "اختار عدد اللاعبين وصعوبة القضية، واكتب الشخصيات والأدلة المطلوبة بالكامل" }, { status: 400 });
+  const playerCount = parsePlayerCount(form.get("playerCount")); const difficulty = parseDifficulty(form.get("difficulty")); const roles = playerCount ? parseRoles(form.get("roles"), playerCount) : null; const clues = playerCount ? parseClues(form.get("clues"), playerCount) : null; const events = parseEvents(form.get("events")); const specialRolesEnabled = String(form.get("specialRolesEnabled")) === "true"; const audio = form.get("revealAudio"); const isActive = String(form.get("isActive")) !== "false";
+  if (title.length < 3 || title.length > 90 || subtitle.length > 300 || briefing.length > 1200 || revealTitle.length < 3 || revealTitle.length > 120 || revealStory.length < 10 || revealStory.length > 3500 || !playerCount || !difficulty || !roles || !clues || !events || (specialRolesEnabled && roles.filter((role) => role.specialAbility === "investigator").length !== 1)) return noStoreJson({ error: "اختار عدد اللاعبين وصعوبة القضية، واكتب الشخصيات والأدلة المطلوبة بالكامل" }, { status: 400 });
   const caseId = crypto.randomUUID(); let audioPath: string | null = null;
   try {
     audioPath = await uploadRevealAudio(audio instanceof File ? audio : null, caseId);
     const supabase = supabaseServer();
-    const { error: caseError } = await supabase.from("mafioso_cases").insert({ id: caseId, title, subtitle, briefing, reveal_title: revealTitle, reveal_story: revealStory, reveal_audio_path: audioPath, is_active: isActive, player_count: playerCount, difficulty });
+    const { error: caseError } = await supabase.from("mafioso_cases").insert({ id: caseId, title, subtitle, briefing, reveal_title: revealTitle, reveal_story: revealStory, reveal_audio_path: audioPath, is_active: isActive, player_count: playerCount, difficulty, special_roles_enabled: specialRolesEnabled });
     if (caseError) throw new Error("تعذر حفظ القضية");
-    const { error: roleError } = await supabase.from("mafioso_case_roles").insert(roles.map((role, index) => ({ case_id: caseId, role_name: role.roleName, public_motive: role.publicMotive, private_card_text: role.privateCardText, alignment: role.alignment, sort_order: index + 1 })));
+    const { error: roleError } = await supabase.from("mafioso_case_roles").insert(roles.map((role, index) => ({ case_id: caseId, role_name: role.roleName, public_motive: role.publicMotive, private_card_text: role.privateCardText, special_ability: role.specialAbility, alignment: role.alignment, sort_order: index + 1 })));
     if (roleError) throw new Error("تعذر حفظ الشخصيات");
     const { error: clueError } = await supabase.from("mafioso_case_clues").insert(clues.map((clue, index) => ({ case_id: caseId, round_number: index + 1, clue_text: clue })));
     if (clueError) throw new Error("تعذر حفظ الأدلة");
+    if (events.length) { const { error: eventError } = await supabase.from("mafioso_case_events").insert(events.map((event) => ({ case_id: caseId, round_number: event.roundNumber, event_text: event.eventText }))); if (eventError) throw new Error("تعذر حفظ أحداث القضية"); }
     return noStoreJson({ success: true });
   } catch (error) { await supabaseServer().from("mafioso_cases").delete().eq("id", caseId); await removeAudio([audioPath]); return noStoreJson({ error: error instanceof Error ? error.message : "حصل خطأ أثناء حفظ القضية" }, { status: 400 }); }
 }
@@ -112,20 +123,22 @@ export async function PATCH(req: NextRequest) {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
   const form = await req.formData(); const caseId = String(form.get("caseId") || "").trim();
   const title = String(form.get("title") || "").trim(); const subtitle = String(form.get("subtitle") || "").trim(); const briefing = String(form.get("briefing") || "").trim(); const revealTitle = String(form.get("revealTitle") || "الحقيقة الكاملة").trim(); const revealStory = String(form.get("revealStory") || "").trim(); const isActive = String(form.get("isActive")) === "true"; const removeReveal = String(form.get("removeReveal")) === "true";
-  const playerCount = parsePlayerCount(form.get("playerCount")); const difficulty = parseDifficulty(form.get("difficulty")); const roles = playerCount ? parseRoles(form.get("roles"), playerCount) : null; const clues = playerCount ? parseClues(form.get("clues"), playerCount) : null; const audio = form.get("revealAudio");
-  if (!caseId || title.length < 3 || title.length > 90 || subtitle.length > 300 || briefing.length > 1200 || revealTitle.length < 3 || revealTitle.length > 120 || revealStory.length < 10 || revealStory.length > 3500 || !playerCount || !difficulty || !roles || !clues) return noStoreJson({ error: "بيانات القضية غير مكتملة أو العدد أو الصعوبة لا يطابقون الشخصيات والأدلة" }, { status: 400 });
+  const playerCount = parsePlayerCount(form.get("playerCount")); const difficulty = parseDifficulty(form.get("difficulty")); const roles = playerCount ? parseRoles(form.get("roles"), playerCount) : null; const clues = playerCount ? parseClues(form.get("clues"), playerCount) : null; const events = parseEvents(form.get("events")); const specialRolesEnabled = String(form.get("specialRolesEnabled")) === "true"; const audio = form.get("revealAudio");
+  if (!caseId || title.length < 3 || title.length > 90 || subtitle.length > 300 || briefing.length > 1200 || revealTitle.length < 3 || revealTitle.length > 120 || revealStory.length < 10 || revealStory.length > 3500 || !playerCount || !difficulty || !roles || !clues || !events || (specialRolesEnabled && roles.filter((role) => role.specialAbility === "investigator").length !== 1)) return noStoreJson({ error: "بيانات القضية غير مكتملة أو العدد أو الصعوبة لا يطابقون الشخصيات والأدلة" }, { status: 400 });
   if (await hasOpenRoom(caseId)) return noStoreJson({ error: "لا يمكن تعديل قضية مرتبطة بروم شغالة. انتظر انتهاء الرومات المرتبطة بها." }, { status: 409 });
   const supabase = supabaseServer(); const { data: existing } = await supabase.from("mafioso_cases").select("reveal_audio_path").eq("id", caseId).maybeSingle(); if (!existing) return noStoreJson({ error: "القضية غير موجودة" }, { status: 404 });
   let uploadedPath: string | null = null;
   try {
     uploadedPath = await uploadRevealAudio(audio instanceof File ? audio : null, caseId);
     const revealAudioPath = removeReveal ? null : (uploadedPath || existing.reveal_audio_path);
-    const { error: updateError } = await supabase.from("mafioso_cases").update({ title, subtitle, briefing, reveal_title: revealTitle, reveal_story: revealStory, reveal_audio_path: revealAudioPath, is_active: isActive, player_count: playerCount, difficulty }).eq("id", caseId);
+    const { error: updateError } = await supabase.from("mafioso_cases").update({ title, subtitle, briefing, reveal_title: revealTitle, reveal_story: revealStory, reveal_audio_path: revealAudioPath, is_active: isActive, player_count: playerCount, difficulty, special_roles_enabled: specialRolesEnabled }).eq("id", caseId);
     if (updateError) throw new Error("تعذر حفظ تعديل القضية");
     const { error: deleteRoles } = await supabase.from("mafioso_case_roles").delete().eq("case_id", caseId); if (deleteRoles) throw new Error("تعذر تحديث الشخصيات");
-    const { error: createRoles } = await supabase.from("mafioso_case_roles").insert(roles.map((role, index) => ({ case_id: caseId, role_name: role.roleName, public_motive: role.publicMotive, private_card_text: role.privateCardText, alignment: role.alignment, sort_order: index + 1 }))); if (createRoles) throw new Error("تعذر حفظ الشخصيات");
+    const { error: createRoles } = await supabase.from("mafioso_case_roles").insert(roles.map((role, index) => ({ case_id: caseId, role_name: role.roleName, public_motive: role.publicMotive, private_card_text: role.privateCardText, special_ability: role.specialAbility, alignment: role.alignment, sort_order: index + 1 }))); if (createRoles) throw new Error("تعذر حفظ الشخصيات");
     const { error: deleteClues } = await supabase.from("mafioso_case_clues").delete().eq("case_id", caseId); if (deleteClues) throw new Error("تعذر تحديث الأدلة");
-    const { error: createClues } = await supabase.from("mafioso_case_clues").insert(clues.map((clue, index) => ({ case_id: caseId, round_number: index + 1, clue_text: clue }))); if (createClues) throw new Error("تعذر حفظ الأدلة");
+    const { error: createClues } = await supabase.from("mafioso_case_clues").insert(clues.map((clue, index) => ({ case_id: caseId, round_number: index + 1, clue_text: clue })));     if (createClues) throw new Error("تعذر حفظ الأدلة");
+    const { error: deleteEvents } = await supabase.from("mafioso_case_events").delete().eq("case_id", caseId); if (deleteEvents) throw new Error("تعذر تحديث أحداث القضية");
+    if (events.length) { const { error: createEvents } = await supabase.from("mafioso_case_events").insert(events.map((event) => ({ case_id: caseId, round_number: event.roundNumber, event_text: event.eventText }))); if (createEvents) throw new Error("تعذر حفظ أحداث القضية"); }
     if ((uploadedPath || removeReveal) && existing.reveal_audio_path !== revealAudioPath) await removeAudio([existing.reveal_audio_path]);
     return noStoreJson({ success: true });
   } catch (error) { await removeAudio([uploadedPath]); return noStoreJson({ error: error instanceof Error ? error.message : "حصل خطأ أثناء حفظ القضية" }, { status: 400 }); }

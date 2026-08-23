@@ -240,3 +240,45 @@
 /* Admin room controls: fast cleanup of stale Mafioso rooms without leaving the case workspace. */
 .mafioso-admin-rooms { overflow:hidden; padding:20px; border-color:rgba(245,185,66,.22); border-radius:23px; background:radial-gradient(circle at 5% 0,rgba(245,185,66,.1),transparent 18rem),linear-gradient(145deg,rgba(30,40,32,.96),rgba(14,18,15,.98)); }.mafioso-admin-rooms>header { display:flex; align-items:flex-start; justify-content:space-between; gap:15px; margin-bottom:14px; }.mafioso-admin-rooms>header span { color:var(--gold); font-size:10px; font-weight:900; letter-spacing:.7px; }.mafioso-admin-rooms h3 { margin:4px 0; font-size:19px; }.mafioso-admin-rooms header p { max-width:480px; margin:0; color:var(--text-muted); font-size:11px; line-height:1.7; }.mafioso-admin-rooms header>div:last-child { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }.mafioso-admin-rooms header .btn { width:auto; min-height:35px; padding:7px 10px; font-size:10px; }.mafioso-admin-rooms-list { display:grid; gap:8px; }.mafioso-admin-rooms-list article { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:10px; padding:11px; border:1px solid rgba(255,255,255,.09); border-radius:15px; background:rgba(255,255,255,.03); }.mafioso-admin-rooms-list small { display:block; color:var(--gold); font-size:9px; font-weight:900; }.mafioso-admin-rooms-list b { display:block; margin-top:2px; color:#ffe096; font:900 13px monospace; direction:ltr; }.mafioso-admin-rooms-list p { overflow:hidden; margin:4px 0 0; color:var(--text-muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }.mafioso-admin-rooms-list>article>span { padding:6px 8px; color:#c8fae8; border:1px solid rgba(124,224,192,.23); border-radius:9px; background:rgba(124,224,192,.07); font-size:10px; white-space:nowrap; }.mafioso-admin-rooms-list .btn { width:auto; min-height:34px; padding:7px 10px; font-size:10px; white-space:nowrap; }.mafioso-admin-rooms-empty { padding:26px 15px; color:var(--text-muted); border:1px dashed rgba(255,255,255,.13); border-radius:15px; text-align:center; font-size:12px; }
 @media(max-width:650px){.mafioso-admin-rooms{padding:16px 12px}.mafioso-admin-rooms>header{display:grid}.mafioso-admin-rooms header>div:last-child{justify-content:stretch}.mafioso-admin-rooms header .btn{flex:1}.mafioso-admin-rooms-list article{grid-template-columns:minmax(0,1fr) auto}.mafioso-admin-rooms-list .btn{grid-column:1/-1;width:100%}.mafioso-admin-rooms-list p{white-space:normal}.mafioso-admin-rooms-list>article>span{align-self:start}}
+
+/* Style reminder: Mafioso v2 keeps one focused case theatre, warm evidence cards, mint status signals, and readable mobile-first panels. */
+.mafioso-room-actions { display:flex; align-items:center; gap:10px; }
+.mafioso-invite-button { min-height:38px; padding:7px 12px; color:#241805; border:1px solid #f7cf70; border-radius:12px; background:linear-gradient(135deg,#ffe49b,#e8a72c); cursor:pointer; font:900 11px Cairo,sans-serif; box-shadow:0 8px 18px rgba(245,185,66,.16); }
+.mafioso-invite-button:active, .mafioso-extra-grid button:active, .mafioso-daily-missions button:active { transform:scale(.97); }
+.mafioso-event-card { display:grid; gap:5px; margin:14px auto; width:min(760px,100%); padding:14px 17px; color:#fff1c8; border:1px solid rgba(245,185,66,.36); border-radius:17px; background:linear-gradient(110deg,rgba(79,53,19,.74),rgba(31,39,31,.88)); box-shadow:0 13px 30px rgba(0,0,0,.18); }
+.mafioso-event-card span, .mafioso-suspicion-panel>span, .mafioso-investigator-panel>span, .mafioso-daily-missions header span { color:var(--gold); font-size:10px; font-weight:900; letter-spacing:.6px; }
+.mafioso-event-card b { font-size:15px; line-height:1.8; }
+.mafioso-event-card small { color:rgba(255,242,207,.68); font-size:10px; }
+.mafioso-extra-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; width:min(1040px,100%); margin:14px auto 0; }
+.mafioso-suspicion-panel, .mafioso-investigator-panel { display:grid; align-content:start; gap:8px; padding:17px; border:1px solid rgba(124,224,192,.2); border-radius:19px; background:linear-gradient(145deg,rgba(25,39,33,.94),rgba(12,16,14,.98)); box-shadow:0 13px 28px rgba(0,0,0,.14); }
+.mafioso-suspicion-panel h2, .mafioso-investigator-panel h2 { margin:0; font-size:18px; }
+.mafioso-suspicion-panel p, .mafioso-investigator-panel p { margin:0; color:var(--text-muted); font-size:11px; line-height:1.75; }
+.mafioso-suspicion-panel>div, .mafioso-investigator-panel>div { display:grid; gap:7px; margin-top:5px; }
+.mafioso-suspicion-panel button, .mafioso-investigator-panel button { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:40px; padding:8px 11px; color:var(--text); border:1px solid rgba(255,255,255,.1); border-radius:11px; background:rgba(255,255,255,.045); cursor:pointer; font:700 11px Cairo,sans-serif; text-align:right; transition:transform .16s ease,border-color .16s ease,background .16s ease; }
+.mafioso-suspicion-panel button:hover, .mafioso-investigator-panel button:hover, .mafioso-suspicion-panel button.selected { border-color:rgba(245,185,66,.6); background:rgba(245,185,66,.12); }
+.mafioso-suspicion-panel button small { color:var(--gold); white-space:nowrap; }
+.mafioso-investigator-panel strong { color:#ffca61; }
+.mafioso-daily-missions { display:grid; gap:10px; margin-top:15px; padding:16px; border:1px solid rgba(245,185,66,.2); border-radius:19px; background:rgba(255,255,255,.035); }
+.mafioso-daily-missions header { display:flex; justify-content:space-between; align-items:end; gap:10px; }
+.mafioso-daily-missions header b { color:var(--text-muted); font-size:10px; }
+.mafioso-daily-missions>div { display:grid; gap:8px; }
+.mafioso-daily-missions article { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 11px; border:1px solid rgba(255,255,255,.09); border-radius:13px; background:rgba(0,0,0,.12); }
+.mafioso-daily-missions article.completed { border-color:rgba(124,224,192,.3); background:rgba(124,224,192,.08); }
+.mafioso-daily-missions article>div { display:grid; gap:2px; min-width:0; }
+.mafioso-daily-missions article b { font-size:12px; }
+.mafioso-daily-missions article small { color:var(--text-muted); font-size:10px; }
+.mafioso-daily-missions article>span { color:#9af1d4; font-size:10px; font-weight:900; white-space:nowrap; }
+.mafioso-daily-missions button { min-width:54px; padding:7px 9px; color:#261a07; border:1px solid #f3c762; border-radius:9px; background:var(--gold); cursor:pointer; font:900 10px Cairo,sans-serif; }
+.mafioso-admin-toggle { display:flex; align-items:center; gap:8px; color:var(--text); font-size:12px; font-weight:900; }
+.mafioso-admin-toggle input { accent-color:var(--gold); }
+@media (max-width:760px) {
+  .mafioso-room-head { align-items:flex-start; }
+  .mafioso-room-actions { flex-direction:column-reverse; align-items:flex-end; gap:6px; }
+  .mafioso-invite-button { min-height:34px; padding-inline:9px; font-size:10px; }
+  .mafioso-extra-grid { grid-template-columns:1fr; }
+  .mafioso-event-card { margin-top:10px; padding:12px 13px; }
+  .mafioso-event-card b { font-size:13px; }
+  .mafioso-daily-missions article { align-items:flex-start; }
+}
+
+.mafioso-role-ability-note { display:block; margin:9px 0 2px; padding:9px 10px; color:#ffe5a0; border:1px solid rgba(245,185,66,.26); border-radius:11px; background:rgba(245,185,66,.08); font-size:10px; line-height:1.7; }
