@@ -23,6 +23,7 @@ function mapRooms(rows: any[]) {
       hostNickname: host?.users?.nickname || "صاحب الروم",
       connectedCount: connected,
       totalPlayers: players.length,
+      maxPlayers: Number(room.player_count) === 4 ? 4 : 5,
     };
   });
 }
@@ -30,7 +31,7 @@ function mapRooms(rows: any[]) {
 export async function GET() {
   if (!(await getAdminFromCookies())) return noStoreJson({ error: "غير مصرح" }, { status: 401 });
   try {
-    const { data, error } = await supabaseServer().from("mafioso_rooms").select("id,code,status,created_by,created_at,mafioso_cases(title),mafioso_room_players(user_id,is_connected,users(nickname))").order("created_at", { ascending: false }).limit(60);
+    const { data, error } = await supabaseServer().from("mafioso_rooms").select("id,code,status,created_by,created_at,player_count,mafioso_cases(title),mafioso_room_players(user_id,is_connected,users(nickname))").order("created_at", { ascending: false }).limit(60);
     if (error) throw error;
     return noStoreJson({ rooms: mapRooms(data || []) });
   } catch (error) {
