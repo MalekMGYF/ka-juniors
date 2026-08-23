@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = supabaseServer();
     let room = await getRoom(supabase, code);
-    if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId });
+    if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId, error: "الروم دي مش موجودة أو اتقفلت. ارجع للـLobby واعمل روم جديدة." }, { status: 404 });
     if (await advanceIfNeeded(supabase, room)) room = await getRoom(supabase, code);
     if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId });
     const [members, usersResult, messagesResult, caseResult, rolesResult, clueResult, votesResult] = await Promise.all([

@@ -35,6 +35,7 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
   const [data, setData] = useState<Snapshot | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const previousStatus = useRef<string | null>(null);
@@ -42,7 +43,13 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
   async function load() {
     const res = await fetch(`/api/mafioso?code=${encodeURIComponent(code)}`, { cache: "no-store" }).catch(() => null);
     const next = res ? await res.json().catch(() => ({})) : {};
-    if (next.room) setData(next); else if (next.error) setError(next.error);
+    if (res?.ok && next.room) {
+      setData(next);
+      setError("");
+    } else {
+      setError(next.error || "الروم دي مش موجودة أو اتقفلت. ارجع للـLobby واعمل روم جديدة.");
+    }
+    setLoading(false);
   }
 
   async function post(action: string, extra: Record<string, unknown> = {}) {
@@ -94,7 +101,7 @@ export default function MafiosoRoom({ code, onLeave }: Props) {
   const discussionReady = data?.discussionReady || { readyCount: 0, requiredCount: 0, isYouReady: false, canRequestVote: false };
   const bossIntro = data?.bossIntro || { acknowledgedCount: 0, requiredCount: 0, isYouAcknowledged: false, canAcknowledge: false };
 
-  if (!data) return <div className="card empty">جاري فتح غرفة القضية…</div>;
+  if (!data) return <div className="card empty mafioso-room-load-state"><b>{loading ? "جاري فتح غرفة القضية…" : "مش قادرين نفتح الروم"}</b>{!loading && <><p>{error}</p><button className="mafioso-primary" type="button" onClick={onLeave}>ارجع للـLobby</button></>}</div>;
   return <section className="mafioso-room-shell mafioso-v2-shell">
     <header className="mafioso-room-head"><div><span>✦ ملف التحقيق · {code}</span><h1>{data.case?.title || "قضية قيد التحضير"}</h1><p>{data.case?.subtitle || "استنوا كشف البطاقات"}</p></div><div className="mafioso-clock"><small>{phaseLabel}</small><strong>{finished ? "✦" : time}</strong></div></header>
     <div className="mafioso-stage mafioso-v2-stage">
