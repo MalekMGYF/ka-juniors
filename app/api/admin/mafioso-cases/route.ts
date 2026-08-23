@@ -51,9 +51,21 @@ async function uploadRevealAudio(file: File | null, folder: string) {
 }
 async function removeAudio(paths: Array<string | null | undefined>) { const valid = paths.filter((path): path is string => Boolean(path)); if (valid.length) await supabaseServer().storage.from("mafioso-media").remove(valid); }
 async function hasOpenRoom(caseId: string) {
-  const { count, error } = await supabaseServer().from("mafioso_rooms").select("id", { count: "exact", head: true }).eq("case_id", caseId).in("status", ["waiting", "role_reveal", "boss_intro", "clue_reveal", "discussion", "vote_announcement", "voting", "vote_result"]);
-  if (error) throw new Error("تعذر فحص الرومات المرتبطة بالقضية");
-  return Boolean(count);
+  const supabase = supabaseServer();
+  const liveStatuses = ["waiting", "role_reveal", "boss_intro", "clue_reveal", "discussion", "vote_announcement", "voting", "vote_result"];
+  const { data: rooms, error: roomError } = await supabase.from("mafioso_rooms").select("id").eq("case_id", caseId).in("status", liveStatuses);
+  if (roomError) throw new Error("تعذر فحص الرومات المرتبطة بالقضية");
+  const roomIds = (rooms || []).map((room) => room.id);
+  if (!roomIds.length) return false;
+  const { data: connected, error: playersError } = await supabase.from("mafioso_room_players").select("room_id").in("room_id", roomIds).eq("is_connected", true);
+  if (playersError) throw new Error("تعذر فحص لاعبي الرومات المرتبطة بالقضية");
+  const connectedRoomIds = new Set((connected || []).map((player) => player.room_id));
+  const abandonedRoomIds = roomIds.filter((roomId) => !connectedRoomIds.has(roomId));
+  if (abandonedRoomIds.length) {
+    const { error: closeError } = await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: new Date().toISOString() }).in("id", abandonedRoomIds);
+    if (closeError) throw new Error("تعذر إغلاق الرومات الفارغة");
+  }
+  return connectedRoomIds.size > 0;
 }
 function publicCases(rows: any[]) {
   return rows.map((row) => ({ ...row, roles: (row.mafioso_case_roles || []).sort((a: any, b: any) => a.sort_order - b.sort_order), clues: (row.mafioso_case_clues || []).sort((a: any, b: any) => a.round_number - b.round_number) }));
