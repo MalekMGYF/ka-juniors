@@ -22,11 +22,11 @@ type Db = ReturnType<typeof supabaseServer>;
 type Room = {
   id: string; code: string; case_id: string | null; status: string; round_number: number;
   phase_ends_at: string | null; current_clue_id: string | null; created_by: string | null;
-  player_count: number;
+  player_count: number; difficulty_preference: "any" | "easy" | "medium" | "hard"; rematch_room_code: string | null;
   final_winner: "mafia" | "innocent" | null; last_eliminated_user_id: string | null;
   last_eliminated_alignment: "mafia" | "innocent" | null;
 };
-type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null; boss_intro_acknowledged_at: string | null; discussion_ready_round: number | null };
+type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "innocent" | null; status: "active" | "eliminated" | "left"; is_connected: boolean; role_acknowledged_at: string | null; boss_intro_acknowledged_at: string | null; discussion_ready_round: number | null; rematch_ready_at: string | null };
 
 function roomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -46,13 +46,14 @@ function inSeconds(seconds: number) { return new Date(Date.now() + seconds * 100
 function playerCountFor(value: unknown) { return Number(value) === 4 ? 4 : MAX_PLAYER_COUNT; }
 function mafiaCountFor(playerCount: number) { return playerCount === 4 ? 1 : 2; }
 function clueCountFor(playerCount: number) { return playerCount === 4 ? 3 : 4; }
+function difficultyFor(value: unknown): "any" | "easy" | "medium" | "hard" { return value === "easy" || value === "medium" || value === "hard" ? value : "any"; }
 function unavailable(error?: unknown) {
   console.error("mafioso request failed", error);
   return noStoreJson({ configured: false, error: "حصلت مشكلة في غرفة القضية. جرّب تاني بعد ثواني." }, { status: 500 });
 }
 
 async function getMembers(supabase: Db, roomId: string) {
-  const { data, error } = await supabase.from("mafioso_room_players").select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at, boss_intro_acknowledged_at, discussion_ready_round").eq("room_id", roomId).order("joined_at", { ascending: true });
+  const { data, error } = await supabase.from("mafioso_room_players").select("user_id, role_id, alignment, status, is_connected, role_acknowledged_at, boss_intro_acknowledged_at, discussion_ready_round, rematch_ready_at").eq("room_id", roomId).order("joined_at", { ascending: true });
   if (error) throw error;
   return (data || []) as Member[];
 }
@@ -202,7 +203,7 @@ export async function GET(request: NextRequest) {
   if (wantsOpenRooms) {
     try {
       const supabase = supabaseServer();
-      const { data: waitingRooms, error: roomsError } = await supabase.from("mafioso_rooms").select("id, code, created_by, created_at, player_count").eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
+      const { data: waitingRooms, error: roomsError } = await supabase.from("mafioso_rooms").select("id, code, created_by, created_at, player_count, difficulty_preference").eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
       if (roomsError) throw roomsError;
       const roomIds = (waitingRooms || []).map((room) => room.id);
       if (!roomIds.length) return noStoreJson({ rooms: [] });
@@ -216,7 +217,7 @@ export async function GET(request: NextRequest) {
         const connected = connectedByRoom.get(room.id) || [];
         const host = connected.find((player) => player.user_id === room.created_by);
         const maxPlayers = playerCountFor(room.player_count);
-        return { code: room.code, hostNickname: host?.users?.nickname || "صاحب الروم", playerCount: connected.length, maxPlayers, seatsLeft: Math.max(0, maxPlayers - connected.length) };
+        return { code: room.code, hostNickname: host?.users?.nickname || "صاحب الروم", playerCount: connected.length, maxPlayers, seatsLeft: Math.max(0, maxPlayers - connected.length), difficultyPreference: difficultyFor(room.difficulty_preference) };
       }).filter((room) => room.playerCount > 0 && room.playerCount < room.maxPlayers) });
     } catch (error) { return unavailable(error); }
   }
@@ -230,13 +231,15 @@ export async function GET(request: NextRequest) {
     const members = await getMembers(supabase, room.id);
     const me = members.find((member) => member.user_id === session.userId);
     if (!me) return noStoreJson({ error: "ادخل الروم الأول قبل ما تشوف تفاصيل القضية" }, { status: 403 });
-    const [usersResult, messagesResult, caseResult, rolesResult, clueResult, votesResult] = await Promise.all([
+    const [usersResult, messagesResult, caseResult, rolesResult, clueResult, clueHistoryResult, votesResult, allVotesResult] = await Promise.all([
       supabase.from("mafioso_room_players").select("user_id, users(nickname, avatar_url)").eq("room_id", room.id),
       supabase.from("mafioso_messages").select("id, user_id, body, created_at, users(nickname)").eq("room_id", room.id).order("created_at").limit(120),
-      room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
+      room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path, difficulty").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
       room.case_id ? getCaseRoles(supabase, room.case_id) : Promise.resolve([]),
       room.current_clue_id ? supabase.from("mafioso_case_clues").select("clue_text").eq("id", room.current_clue_id).maybeSingle() : Promise.resolve({ data: null } as any),
-      supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", room.round_number)
+      room.case_id && room.status !== "waiting" ? supabase.from("mafioso_case_clues").select("round_number, clue_text").eq("case_id", room.case_id).lte("round_number", Math.max(1, room.round_number)).order("round_number") : Promise.resolve({ data: [] } as any),
+      supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", room.round_number),
+      room.status === "finished" ? supabase.from("mafioso_votes").select("voter_id, target_id").eq("room_id", room.id) : Promise.resolve({ data: [] } as any)
     ]);
     const userMap = new Map(((usersResult.data || []) as any[]).map((row) => [row.user_id, row.users]));
     const roleMap = new Map((rolesResult as any[]).map((role) => [role.id, role]));
@@ -253,11 +256,30 @@ export async function GET(request: NextRequest) {
     const mafiaLeft = members.filter((member) => member.status === "active" && member.alignment === "mafia").length;
     const isFinalTwoVote = members.filter((member) => member.status === "active").length <= 2;
     const finalEligibleVoters = isFinalTwoVote ? eligibleVoters(members) : [];
+    const messagesForAwards = (messagesResult.data || []) as any[];
+    const messageCounts = new Map<string, number>();
+    for (const message of messagesForAwards) messageCounts.set(message.user_id, (messageCounts.get(message.user_id) || 0) + 1);
+    const correctVoteCounts = new Map<string, number>();
+    for (const vote of ((allVotesResult as any).data || []) as any[]) {
+      const target = members.find((member) => member.user_id === vote.target_id);
+      if (target?.alignment === "mafia") correctVoteCounts.set(vote.voter_id, (correctVoteCounts.get(vote.voter_id) || 0) + 1);
+    }
+    const topOf = (counts: Map<string, number>) => [...counts.entries()].sort((left, right) => right[1] - left[1])[0];
+    const topCorrectVote = topOf(correctVoteCounts);
+    const topTalker = topOf(messageCounts);
+    const awards = room.status === "finished" && room.final_winner ? [
+      topCorrectVote ? { key: "hawk", title: "عين الصقر", note: `اكتشف المافيا ${topCorrectVote[1]} مرة`, userId: topCorrectVote[0] } : null,
+      topTalker ? { key: "voice", title: "صوت التحقيق", note: `كتب ${topTalker[1]} رسالة في القضية`, userId: topTalker[0] } : null,
+      ...members.filter((member) => member.status === "active" && member.alignment === room.final_winner).map((member) => ({ key: `winner-${member.user_id}`, title: room.final_winner === "mafia" ? "مافيوسو هادي" : "بريء صامد", note: "فضل للنهاية مع الفريق الفايز", userId: member.user_id }))
+    ].filter(Boolean).map((award: any) => ({ ...award, playerName: publicPlayerNames.get(award.userId) || "لاعب" })) : [];
+    const rematchMembers = members.filter((member) => member.status !== "left");
+    const rematchReadyCount = rematchMembers.filter((member) => member.rematch_ready_at).length;
+    const rematchRoom = room.rematch_room_code ? await getRoom(supabase, room.rematch_room_code).catch(() => null) : null;
     return noStoreJson({
       configured: true,
       sessionUserId: session.userId,
       room: { ...room, isHost: room.created_by === session.userId },
-      case: caseResult.data ? { title: caseResult.data.title, subtitle: caseResult.data.subtitle, briefing: caseResult.data.briefing, revealTitle: room.status === "finished" ? caseResult.data.reveal_title : null, revealStory: room.status === "finished" ? caseResult.data.reveal_story : null, revealAudioPath: room.status === "finished" && caseResult.data.reveal_audio_path ? supabase.storage.from("mafioso-media").getPublicUrl(caseResult.data.reveal_audio_path).data.publicUrl : null } : null,
+      case: caseResult.data ? { title: caseResult.data.title, subtitle: caseResult.data.subtitle, briefing: caseResult.data.briefing, difficulty: caseResult.data.difficulty || "medium", revealTitle: room.status === "finished" ? caseResult.data.reveal_title : null, revealStory: room.status === "finished" ? caseResult.data.reveal_story : null, revealAudioPath: room.status === "finished" && caseResult.data.reveal_audio_path ? supabase.storage.from("mafioso-media").getPublicUrl(caseResult.data.reveal_audio_path).data.publicUrl : null } : null,
       players: members.map((member) => {
         const nickname = (userMap.get(member.user_id) as any)?.nickname || "لاعب";
         const publicRoleName = hasPublicRoles && member.role_id ? roleMap.get(member.role_id)?.role_name || null : null;
@@ -267,6 +289,8 @@ export async function GET(request: NextRequest) {
       motives: (rolesResult as any[]).map((role) => ({ roleName: role.role_name, motive: role.public_motive })),
       ownCard: ownRole ? { roleName: ownRole.role_name, cardText: ownRole.alignment === "mafia" ? "أنت من فريق المافيوسو. خليك هادي وما تكشفش انتماءك." : "أنت من فريق البريئين. ركّز في كلام مافيا بوص والأدلة." , alignment: ownRole.alignment, acknowledged: Boolean(me?.role_acknowledged_at) } : null,
       currentClue: (clueResult as any).data?.clue_text || null,
+      investigationLog: ((clueHistoryResult as any).data || []).map((clue: any) => ({ roundNumber: clue.round_number, clueText: clue.clue_text })),
+      awards,
       lastVote: { eliminatedName: lastEliminatedName, alignment: room.last_eliminated_alignment, mafiaLeft, isTie: !room.last_eliminated_user_id },
       messages: (messagesResult.data || []).map((message: any) => ({ id: message.id, userId: message.user_id, body: message.body, createdAt: message.created_at, author: publicPlayerNames.get(message.user_id) || message.users?.nickname || "لاعب" })),
       canChat: room.status === "discussion" && me?.status === "active",
@@ -285,6 +309,7 @@ export async function GET(request: NextRequest) {
       finalTwoVote: isFinalTwoVote,
       finalEligibleVoterCount: finalEligibleVoters.length,
       isFinalVoteEligible: finalEligibleVoters.includes(session.userId),
+      rematch: { canRequest: room.status === "finished" && Boolean(room.final_winner) && me.status !== "left", isYouReady: Boolean(me.rematch_ready_at), readyCount: rematchReadyCount, requiredCount: rematchMembers.length, roomCode: rematchRoom?.status === "waiting" ? rematchRoom.code : null },
       canVote: room.status === "voting" && Boolean(me) && eligibleVoters(members).includes(session.userId),
       hasVoted: Boolean((await supabase.from("mafioso_votes").select("id").eq("room_id", room.id).eq("round_number", room.round_number).eq("voter_id", session.userId).maybeSingle()).data)
     });
@@ -301,9 +326,10 @@ export async function POST(request: NextRequest) {
     const supabase = supabaseServer();
     if (action === "create_room") {
       const requestedPlayerCount = playerCountFor(body?.playerCount);
+      const difficultyPreference = difficultyFor(body?.difficultyPreference);
       let room: any = null;
       for (let attempt = 0; attempt < 4 && !room; attempt += 1) {
-        const created = await supabase.from("mafioso_rooms").insert({ code: roomCode(), created_by: session.userId, name: "غرفة القضية", status: "waiting", player_count: requestedPlayerCount }).select("id, code, player_count").maybeSingle();
+        const created = await supabase.from("mafioso_rooms").insert({ code: roomCode(), created_by: session.userId, name: "غرفة القضية", status: "waiting", player_count: requestedPlayerCount, difficulty_preference: difficultyPreference }).select("id, code, player_count").maybeSingle();
         if (!created.error) room = created.data;
       }
       if (!room) return unavailable();
@@ -354,7 +380,9 @@ export async function POST(request: NextRequest) {
       const expectedClueCount = clueCountFor(roomPlayerCount);
       const connected = members.filter((member) => member.is_connected && member.status === "active");
       if (connected.length !== roomPlayerCount) return noStoreJson({ error: `لازم تدخلوا ${roomPlayerCount} لاعبين بالظبط عشان تبدأ القضية` }, { status: 409 });
-      const { data: cases, error: caseError } = await supabase.from("mafioso_cases").select("id").eq("is_active", true).eq("player_count", roomPlayerCount);
+      let casesQuery = supabase.from("mafioso_cases").select("id").eq("is_active", true).eq("player_count", roomPlayerCount);
+      if (difficultyFor(room.difficulty_preference) !== "any") casesQuery = casesQuery.eq("difficulty", difficultyFor(room.difficulty_preference));
+      const { data: cases, error: caseError } = await casesQuery;
       if (caseError || !cases?.length) return noStoreJson({ error: "ضيف قضية مفعّلة من الأدمن الأول" }, { status: 409 });
       const selectedCase = cases[Math.floor(Math.random() * cases.length)];
       const roles = await getCaseRoles(supabase, selectedCase.id);
@@ -460,6 +488,47 @@ export async function POST(request: NextRequest) {
       }
       await broadcastMafiosoEvent(supabase, code, "player_left", { userId: session.userId });
       return noStoreJson({ ok: true });
+    }
+    if (action === "ready_rematch") {
+      if (room.status !== "finished" || !room.final_winner) return noStoreJson({ error: "إعادة اللعب بتظهر بعد انتهاء قضية مكتملة بس" }, { status: 409 });
+      if (me.status === "left") return noStoreJson({ error: "اللي خرج من الروم ما يقدرش يدخل إعادة اللعب" }, { status: 403 });
+      const { error: readyError } = await supabase.from("mafioso_room_players").update({ rematch_ready_at: new Date().toISOString() }).eq("room_id", room.id).eq("user_id", session.userId).neq("status", "left");
+      if (readyError) return unavailable(readyError);
+      const refreshed = await getMembers(supabase, room.id);
+      const rematchMembers = refreshed.filter((member) => member.status !== "left");
+      const allReady = rematchMembers.length === playerCountFor(room.player_count) && rematchMembers.every((member) => member.rematch_ready_at);
+      let rematchCode: string | null = room.rematch_room_code || null;
+      if (allReady && !rematchCode) {
+        let createdRoom: any = null;
+        for (let attempt = 0; attempt < 4 && !createdRoom; attempt += 1) {
+          const created = await supabase.from("mafioso_rooms").insert({ code: roomCode(), created_by: room.created_by, name: "إعادة لعب مافيوسو", status: "waiting", player_count: playerCountFor(room.player_count), difficulty_preference: difficultyFor(room.difficulty_preference) }).select("id, code").maybeSingle();
+          if (!created.error) createdRoom = created.data;
+        }
+        if (!createdRoom) return unavailable();
+        const { data: claimed, error: claimError } = await supabase.from("mafioso_rooms").update({ rematch_room_code: createdRoom.code }).eq("id", room.id).is("rematch_room_code", null).select("rematch_room_code").maybeSingle();
+        if (claimError) return unavailable(claimError);
+        rematchCode = claimed?.rematch_room_code || null;
+        if (!rematchCode) {
+          await supabase.from("mafioso_rooms").delete().eq("id", createdRoom.id).eq("status", "waiting");
+          const latest = await getRoom(supabase, code);
+          rematchCode = latest?.rematch_room_code || null;
+        }
+      }
+      await broadcastMafiosoEvent(supabase, code, "rematch_ready_changed", { userId: session.userId, readyCount: rematchMembers.filter((member) => member.rematch_ready_at).length, requiredCount: rematchMembers.length, rematchCode });
+      return noStoreJson({ ok: true, rematchCode });
+    }
+    if (action === "join_rematch") {
+      if (room.status !== "finished" || !room.rematch_room_code) return noStoreJson({ error: "روم الإعادة لسه مش جاهزة" }, { status: 409 });
+      if (me.status === "left") return noStoreJson({ error: "اللي خرج من الروم ما يقدرش يدخل إعادة اللعب" }, { status: 403 });
+      const rematchRoom = await getRoom(supabase, room.rematch_room_code);
+      if (!rematchRoom || rematchRoom.status !== "waiting") return noStoreJson({ error: "روم الإعادة اتقفلت أو بدأت بالفعل" }, { status: 409 });
+      const rematchMembers = await getMembers(supabase, rematchRoom.id);
+      if (rematchMembers.some((member) => member.user_id === session.userId)) return noStoreJson({ ok: true, code: rematchRoom.code });
+      if (rematchMembers.filter((member) => member.status === "active" && member.is_connected).length >= playerCountFor(rematchRoom.player_count)) return noStoreJson({ error: "روم الإعادة اكتملت" }, { status: 409 });
+      const { error: joinError } = await supabase.from("mafioso_room_players").insert({ room_id: rematchRoom.id, user_id: session.userId, status: "active", is_connected: true });
+      if (joinError) return unavailable(joinError);
+      await broadcastMafiosoEvent(supabase, rematchRoom.code, "player_joined", { userId: session.userId, nickname: session.nickname });
+      return noStoreJson({ ok: true, code: rematchRoom.code });
     }
     return noStoreJson({ error: "عملية غير معروفة" }, { status: 400 });
   } catch (error) { return unavailable(error); }

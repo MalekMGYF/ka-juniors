@@ -38,7 +38,7 @@ export default function MafiosoPage() {
       avatarUrl={me?.avatar_url}
       frameColor={me?.equippedFrameColor}
     >
-      {roomCode ? <MafiosoRoom code={roomCode} onLeave={leaveRoom} /> : <MafiosoLobby me={me} onStarted={enterRoom} />}
+      {roomCode ? <MafiosoRoom code={roomCode} onLeave={leaveRoom} onRoomChange={enterRoom} /> : <MafiosoLobby me={me} onStarted={enterRoom} />}
     </AppShell>
   );
 }
