@@ -37,8 +37,7 @@ export default function LoginPage() {
   return (
     <div className="center-page login-gate">
       <div className="card login-gate-card" style={{ maxWidth: 400, width: "100%" }}>
-        <div className="login-gate-mark" aria-hidden="true"><span>✎</span><i>✦</i></div>
-        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>K.A Juniors</div>
+        <div className="ka-auth-brand" aria-label="K.A Juniors"><span className="ka-brand-monogram" aria-hidden="true"><b>K</b><i>A</i></span><span className="ka-brand-copy"><b>KA</b><small>Juniors</small></span><span className="ka-brand-bubble" aria-hidden="true">✦</span></div>
         <h1>ارجع للملعب</h1>
         <p className="subtitle" style={{ textAlign: "center" }}>سجل دخولك وخلي اسمك يلمع في الترتيب.</p>
 
