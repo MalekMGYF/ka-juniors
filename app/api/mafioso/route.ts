@@ -1,8 +1,10 @@
+import { randomInt } from "node:crypto";
 import { NextRequest } from "next/server";
 import { supabaseServer } from "../../../lib/supabase";
 import { getSessionFromCookies } from "../../../lib/auth";
 import { noStoreJson } from "../../../lib/api-response";
 import { broadcastMafiosoEvent } from "../../../lib/mafioso-realtime";
+import { containsProfanity } from "../../../lib/profanity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +19,25 @@ const VOTE_ANNOUNCE_SECONDS = 5;
 const VOTE_SECONDS = 75;
 const VOTE_RESULT_SECONDS = 5;
 const FINISH_REVEAL_SECONDS = 10;
+const RATE_WINDOW_MS = 10_000;
+const rateBuckets = new Map<string, { startedAt: number; count: number }>();
+
+function withinRateLimit(userId: string, action: string) {
+  const now = Date.now();
+  if (rateBuckets.size > 2000) {
+    for (const [key, bucket] of rateBuckets) if (now - bucket.startedAt >= RATE_WINDOW_MS) rateBuckets.delete(key);
+  }
+  const key = `${userId}:${action}`;
+  const bucket = rateBuckets.get(key);
+  const max = action === "message" ? 8 : action === "create_room" ? 3 : 12;
+  if (!bucket || now - bucket.startedAt >= RATE_WINDOW_MS) {
+    rateBuckets.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  if (bucket.count >= max) return false;
+  bucket.count += 1;
+  return true;
+}
 
 type Db = ReturnType<typeof supabaseServer>;
 type Room = {
@@ -30,7 +51,7 @@ type Member = { user_id: string; role_id: string | null; alignment: "mafia" | "i
 
 function roomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return `MF-${Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("")}`;
+  return `MF-${Array.from({ length: 4 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
 }
 
 function shuffle<T>(items: T[]) {
@@ -200,6 +221,7 @@ export async function GET(request: NextRequest) {
   if (!session) return noStoreJson({ error: "لازم تسجل دخول" }, { status: 401 });
   const code = request.nextUrl.searchParams.get("code")?.trim().toUpperCase();
   const wantsOpenRooms = request.nextUrl.searchParams.get("openRooms") === "1";
+  if (!withinRateLimit(session.userId, wantsOpenRooms ? "open_rooms" : "snapshot")) return noStoreJson({ error: "طلبات كتير بسرعة، استنى ثواني" }, { status: 429 });
   if (wantsOpenRooms) {
     try {
       const supabase = supabaseServer();
@@ -226,18 +248,21 @@ export async function GET(request: NextRequest) {
     const supabase = supabaseServer();
     let room = await getRoom(supabase, code);
     if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId, error: "الروم دي مش موجودة أو اتقفلت. ارجع للـLobby واعمل روم جديدة." }, { status: 404 });
+    const initialMembers = await getMembers(supabase, room.id);
+    if (!initialMembers.some((member) => member.user_id === session.userId)) return noStoreJson({ error: "ادخل الروم الأول قبل ما تشوف تفاصيل القضية" }, { status: 403 });
     if (await advanceIfNeeded(supabase, room)) room = await getRoom(supabase, code);
     if (!room) return noStoreJson({ configured: true, room: null, players: [], messages: [], sessionUserId: session.userId });
     const members = await getMembers(supabase, room.id);
     const me = members.find((member) => member.user_id === session.userId);
     if (!me) return noStoreJson({ error: "ادخل الروم الأول قبل ما تشوف تفاصيل القضية" }, { status: 403 });
+    const visibleClueThrough = room.current_clue_id ? room.round_number : Math.max(0, room.round_number - 1);
     const [usersResult, messagesResult, caseResult, rolesResult, clueResult, clueHistoryResult, votesResult, allVotesResult] = await Promise.all([
       supabase.from("mafioso_room_players").select("user_id, users(nickname, avatar_url)").eq("room_id", room.id),
       supabase.from("mafioso_messages").select("id, user_id, body, created_at, users(nickname)").eq("room_id", room.id).order("created_at").limit(120),
       room.case_id ? supabase.from("mafioso_cases").select("title, subtitle, briefing, reveal_title, reveal_story, reveal_audio_path, difficulty").eq("id", room.case_id).maybeSingle() : Promise.resolve({ data: null } as any),
       room.case_id ? getCaseRoles(supabase, room.case_id) : Promise.resolve([]),
       room.current_clue_id ? supabase.from("mafioso_case_clues").select("clue_text").eq("id", room.current_clue_id).maybeSingle() : Promise.resolve({ data: null } as any),
-      room.case_id && room.status !== "waiting" ? supabase.from("mafioso_case_clues").select("round_number, clue_text").eq("case_id", room.case_id).lte("round_number", Math.max(1, room.round_number)).order("round_number") : Promise.resolve({ data: [] } as any),
+      room.case_id && room.status !== "waiting" && visibleClueThrough > 0 ? supabase.from("mafioso_case_clues").select("round_number, clue_text").eq("case_id", room.case_id).lte("round_number", visibleClueThrough).order("round_number") : Promise.resolve({ data: [] } as any),
       supabase.from("mafioso_votes").select("target_id").eq("room_id", room.id).eq("round_number", room.round_number),
       room.status === "finished" ? supabase.from("mafioso_votes").select("voter_id, target_id").eq("room_id", room.id) : Promise.resolve({ data: [] } as any)
     ]);
@@ -319,12 +344,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const session = getSessionFromCookies();
   if (!session) return noStoreJson({ error: "لازم تسجل دخول" }, { status: 401 });
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 50_000) return noStoreJson({ error: "الطلب كبير زيادة" }, { status: 413 });
   const body = await request.json().catch(() => ({}));
   const action = body?.action;
   const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
   try {
     const supabase = supabaseServer();
     if (action === "create_room") {
+      if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "استنى شوية قبل إنشاء رومات جديدة" }, { status: 429 });
       const requestedPlayerCount = playerCountFor(body?.playerCount);
       const difficultyPreference = difficultyFor(body?.difficultyPreference);
       let room: any = null;
@@ -339,12 +367,20 @@ export async function POST(request: NextRequest) {
       return noStoreJson({ ok: true, code: room.code, roomId: room.id, isHost: true, playerCount: playerCountFor(room.player_count) });
     }
     if (!code) return noStoreJson({ error: "اكتب كود الروم" }, { status: 400 });
+    if (!/^MF-[A-Z2-9]{4}$/.test(code)) return noStoreJson({ error: "كود الروم غير صحيح" }, { status: 400 });
+    if (action !== "join_room") {
+      const accessRoom = await getRoom(supabase, code);
+      if (!accessRoom) return noStoreJson({ error: "الروم دي مش موجودة" }, { status: 404 });
+      const accessMembers = await getMembers(supabase, accessRoom.id);
+      if (!accessMembers.some((member) => member.user_id === session.userId)) return noStoreJson({ error: "ادخل الروم الأول" }, { status: 403 });
+    }
     let room = await getRoom(supabase, code);
     if (!room) return noStoreJson({ error: "الروم دي مش موجودة" }, { status: 404 });
     if (await advanceIfNeeded(supabase, room)) room = await getRoom(supabase, code);
     if (!room) return unavailable();
 
     if (action === "join_room") {
+      if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "استنى شوية قبل محاولة دخول رومات كتير" }, { status: 429 });
       if (room.status !== "waiting") return noStoreJson({ error: "القضية بدأت بالفعل" }, { status: 409 });
       const members = await getMembers(supabase, room.id);
       const existing = members.find((member) => member.user_id === session.userId);
@@ -436,9 +472,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "message") {
+      if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "بلاش رسائل كتير بسرعة، استنى ثواني" }, { status: 429 });
       if (room.status !== "discussion" || me.status !== "active") return noStoreJson({ error: "الشات متاح للاعبين الموجودين أثناء النقاش فقط" }, { status: 403 });
       const message = typeof body.message === "string" ? body.message.trim().slice(0, 420) : "";
       if (!message) return noStoreJson({ error: "اكتب رسالتك" }, { status: 400 });
+      if (containsProfanity(message)) return noStoreJson({ error: "خلّي الكلام مناسب للعبة" }, { status: 400 });
       const { data: inserted, error } = await supabase.from("mafioso_messages").insert({ room_id: room.id, round_number: room.round_number, user_id: session.userId, body: message }).select("id, created_at").single();
       if (error || !inserted) return unavailable(error);
       await broadcastMafiosoEvent(supabase, code, "message_created", { id: inserted.id, userId: session.userId, author: session.nickname, body: message, createdAt: inserted.created_at });
@@ -459,6 +497,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "vote") {
+      if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "استنى شوية قبل محاولة تصويت جديدة" }, { status: 429 });
       if (room.status !== "voting") return noStoreJson({ error: "التصويت مش مفتوح دلوقتي" }, { status: 409 });
       const liveMembers = await getMembers(supabase, room.id);
       if (!eligibleVoters(liveMembers).includes(session.userId)) return noStoreJson({ error: "أنت متفرج ومش مؤهل للتصويت في الجولة دي" }, { status: 403 });
@@ -518,6 +557,7 @@ export async function POST(request: NextRequest) {
       return noStoreJson({ ok: true, rematchCode });
     }
     if (action === "join_rematch") {
+      if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "استنى شوية قبل محاولة دخول روم الإعادة" }, { status: 429 });
       if (room.status !== "finished" || !room.rematch_room_code) return noStoreJson({ error: "روم الإعادة لسه مش جاهزة" }, { status: 409 });
       if (me.status === "left") return noStoreJson({ error: "اللي خرج من الروم ما يقدرش يدخل إعادة اللعب" }, { status: 403 });
       const rematchRoom = await getRoom(supabase, room.rematch_room_code);

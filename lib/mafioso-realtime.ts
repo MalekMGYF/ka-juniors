@@ -10,7 +10,9 @@ export async function broadcastMafiosoEvent(supabase: SupabaseClient, code: stri
       const timeout = setTimeout(() => done(false), 2500);
       channel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          const result = await channel.send({ type: "broadcast", event, payload });
+          // The channel is only a wake-up signal. Sensitive room data stays behind
+          // the protected API snapshot, which checks membership before returning it.
+          const result = await channel.send({ type: "broadcast", event, payload: { event } });
           clearTimeout(timeout);
           done(result === "ok");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
