@@ -72,21 +72,26 @@ export default function AppShell({
 
   return (
     <div className="page">
-      <div className="topbar">
-        <div className="logo-mark">
-          <span className="ka-game-mark" aria-hidden="true"><i>✎</i><b>✦</b></span>
-          <span>K.A Juniors</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="topbar ka-topbar">
+        <a className="ka-brand" href="/profile" aria-label="K.A Juniors - البروفايل">
+          <span className="ka-brand-monogram" aria-hidden="true"><b>K</b><i>A</i></span>
+          <span className="ka-brand-copy"><b>KA</b><small>Juniors</small></span>
+          <span className="ka-brand-bubble" aria-hidden="true">✦</span>
+        </a>
+        <div className="ka-topbar-actions">
+          <button className="games-navigator" onClick={() => setMenuOpen(true)} aria-label="فتح كل الألعاب" aria-expanded={menuOpen}>
+            <span className="games-navigator-icon" aria-hidden="true"><i /><i /><i /><i /></span>
+            <span><b>كل الألعاب</b><small>اختار مغامرتك</small></span>
+          </button>
           {onlineCount !== null && (
-            <span className="badge online-badge">
+            <span className="badge online-badge" title="متصلين الآن">
               <span className="online-dot" />
               {onlineCount}
             </span>
           )}
           <span className="badge badge-point">⭐ {totalPoints}</span>
           <span className="badge badge-coin">🪙 {coins ?? 0}</span>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <a href="/profile" className="ka-profile-shortcut" aria-label="فتح البروفايل">
             <div className="avatar" style={frameColor ? { border: `2.5px solid ${frameColor}` } : undefined}>
               {avatarUrl ? (
                 <img
@@ -101,7 +106,7 @@ export default function AppShell({
             <span style={{ fontSize: 10, color: level.color, fontWeight: 700 }}>
               {level.icon} {level.name}
             </span>
-          </div>
+          </a>
         </div>
       </div>
 
@@ -109,19 +114,11 @@ export default function AppShell({
         {children}
       </div>
 
-      <button
-        className="menu-fab"
-        onClick={() => setMenuOpen(true)}
-        aria-label="فتح قائمة الألعاب"
-      >
-        <span className="menu-fab-dots">⋯</span>
-      </button>
-
       {menuOpen && (
         <div className="menu-sheet-overlay" onClick={() => setMenuOpen(false)}>
-          <div className="menu-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="menu-sheet ka-games-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="كل الألعاب">
             <div className="menu-sheet-handle" />
-            <h3 className="menu-sheet-title">فين عايز تروح؟</h3>
+            <div className="ka-games-sheet-heading"><div><span>دليل K.A Juniors</span><h3 className="menu-sheet-title">اختار اللعبة اللي على مزاجك</h3></div><button onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة">×</button></div>
             <div className="menu-grid">
               {tabs.map((tab) => (
                 <a
