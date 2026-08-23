@@ -7,6 +7,7 @@ import { mafiosoChannelName } from "../lib/mafioso-channel";
 
 type Me = { nickname?: string } | null;
 type Player = { userId: string; nickname: string; isYou?: boolean; status?: string };
+type OpenRoom = { code: string; hostNickname: string; playerCount: number; seatsLeft: number };
 type Props = { me: Me; onStarted: (code: string) => void };
 
 const emptySeats = Array.from({ length: 5 });
@@ -19,6 +20,8 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
+  const [openRooms, setOpenRooms] = useState<OpenRoom[]>([]);
+  const [openRoomsLoading, setOpenRoomsLoading] = useState(true);
   const seats = useMemo(() => [...players, ...emptySeats].slice(0, 5), [players]);
 
   async function post(action: string, code?: string) {
@@ -40,6 +43,14 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     if (data.room.status !== "waiting") onStarted(code);
   }
 
+  async function loadOpenRooms() {
+    setOpenRoomsLoading(true);
+    const res = await fetch("/api/mafioso?openRooms=1", { cache: "no-store" }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (res?.ok) setOpenRooms(data.rooms || []);
+    setOpenRoomsLoading(false);
+  }
+
   useEffect(() => {
     if (!room?.code) return;
     void readRoom(room.code);
@@ -51,6 +62,13 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     return () => { void client.removeChannel(channel); };
   }, [room?.code]);
 
+  useEffect(() => {
+    if (room) return;
+    void loadOpenRooms();
+    const refresh = window.setInterval(() => void loadOpenRooms(), 5000);
+    return () => window.clearInterval(refresh);
+  }, [room]);
+
   async function createRoom() {
     const data = await post("create_room");
     if (!data?.code) return;
@@ -58,8 +76,8 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     setPlayers([{ userId: "you", nickname: me?.nickname || "أنت", isYou: true }]);
   }
 
-  async function joinRoom() {
-    const code = joinCode.trim().toUpperCase();
+  async function joinRoom(openRoomCode?: string) {
+    const code = (openRoomCode || joinCode).trim().toUpperCase();
     if (!code) { setError("اكتب كود الروم الأول"); return; }
     const data = await post("join_room", code);
     if (!data?.ok) return;
@@ -86,6 +104,10 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   return <section className="mafioso-lobby-shell"><div className="mafioso-lobby mafioso-home">
     <header className="mafioso-lobby-header"><div><span>✦ مافيوسو أونلاين</span><h1>مين فينا بيكدب؟</h1><p>خمسة أصحاب، كارت سري لكل واحد، وقضية ما تتحلش غير لما تركزوا في كل كلمة.</p></div><div className="mafioso-lobby-lamp">🕵️</div></header>
     <div className="mafioso-lobby-grid"><article><i>✦</i><h2>أنشئ قضية جديدة</h2><p>خد كود روم خاص، ابعته لأربع أصحاب، وابدأوا لما تكملوا خمسة.</p><button className="mafioso-primary" disabled={busy} onClick={createRoom}>{busy ? "بنجهز الروم…" : "إنشاء روم"}</button></article><article className="mafioso-join"><i>⌁</i><h2>ادخل روم موجودة</h2><p>معاك كود من صاحبك؟ اكتبه وادخل على طول.</p>{mode === "join" && <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} placeholder="MF-ABCD" maxLength={7} />}<button className="mafioso-secondary" disabled={busy} onClick={() => mode === "join" ? void joinRoom() : setMode("join")}>{mode === "join" ? "دخول الروم ←" : "معايا كود روم"}</button></article></div>
-    <div className="mafioso-rules"><span>5 لاعبين بالظبط</span><span>2 مافيوسو مخفيين</span><span>4 أدلة + تصويت حاسم</span></div>{error && <p className="mafioso-error">{error}</p>}
+    <div className="mafioso-rules"><span>5 لاعبين بالظبط</span><span>2 مافيوسو مخفيين</span><span>4 أدلة + تصويت حاسم</span></div>
+    <section className="mafioso-open-rooms">
+      <header><div><span>متاح دلوقتي</span><h2>رومات مستنية لاعبين</h2><p>اختار روم جاهزة بدل ما تستنى كود من صاحبك.</p></div><button type="button" onClick={() => void loadOpenRooms()} disabled={openRoomsLoading || busy} aria-label="تحديث الرومات">↻</button></header>
+      {openRoomsLoading ? <div className="mafioso-open-rooms-empty">جاري نشوف الرومات…</div> : openRooms.length === 0 ? <div className="mafioso-open-rooms-empty"><span>⌁</span><b>مفيش روم مفتوحة دلوقتي</b><p>اعمل روم وابعت الكود لأصحابك، وهيظهروا هنا أول ما يدخلوا.</p></div> : <div className="mafioso-open-rooms-grid">{openRooms.map((openRoom) => <article key={openRoom.code}><div className="mafioso-open-room-host"><span>{openRoom.hostNickname.charAt(0)}</span><div><small>صاحب الروم</small><b>{openRoom.hostNickname}</b></div><em>{openRoom.playerCount}/5</em></div><div className="mafioso-open-room-code"><span>كود الروم</span><strong>{openRoom.code}</strong></div><p>فاضل {openRoom.seatsLeft} {openRoom.seatsLeft === 1 ? "لاعب" : "لاعبين"}</p><button className="mafioso-primary" disabled={busy || openRoom.playerCount >= 5} onClick={() => void joinRoom(openRoom.code)}>ادخل الروم ←</button></article>)}</div>}
+    </section>{error && <p className="mafioso-error">{error}</p>}
   </div></section>;
 }
