@@ -47,11 +47,8 @@ export default function RegisterPage() {
 
   return (
     <div className="center-page">
-      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
-        <div className="logo-mark" style={{ justifyContent: "center", width: "100%", marginBottom: 6 }}>
-          <span className="spark">✦</span>
-          K.A Juniors
-        </div>
+      <div className="card login-gate-card" style={{ maxWidth: 420, width: "100%" }}>
+        <div className="ka-auth-brand" aria-label="K.A Juniors"><span className="ka-brand-monogram" aria-hidden="true"><b>K</b><i>A</i></span><span className="ka-brand-copy"><b>KA</b><small>Juniors</small></span><span className="ka-brand-bubble" aria-hidden="true">✦</span></div>
         <p className="subtitle" style={{ textAlign: "center" }}>
           سجل بياناتك وابدأ تلعب وتتصدر
         </p>
