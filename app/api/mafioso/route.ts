@@ -133,7 +133,7 @@ async function clueCountForRoom(supabase: Db, room: Room) {
 function eligibleVoters(members: Member[]) {
   const active = members.filter((player) => player.status === "active");
   if (active.length > 2) return active.map((player) => player.user_id);
-  return members.filter((player) => player.status === "active" || (player.status === "eliminated" && player.alignment === "innocent")).map((player) => player.user_id);
+  return members.filter((player) => player.status === "eliminated" && player.alignment === "innocent").map((player) => player.user_id);
 }
 
 async function resolveVotes(supabase: Db, room: Room) {
@@ -250,6 +250,8 @@ export async function GET(request: NextRequest) {
     }));
     const lastEliminatedName = room.last_eliminated_user_id ? publicPlayerNames.get(room.last_eliminated_user_id) || "اللاعب" : null;
     const mafiaLeft = members.filter((member) => member.status === "active" && member.alignment === "mafia").length;
+    const isFinalTwoVote = members.filter((member) => member.status === "active").length <= 2;
+    const finalEligibleVoters = isFinalTwoVote ? eligibleVoters(members) : [];
     return noStoreJson({
       configured: true,
       sessionUserId: session.userId,
@@ -279,6 +281,9 @@ export async function GET(request: NextRequest) {
         isYouAcknowledged: room.status === "boss_intro" && me?.status === "active" && Boolean(me.boss_intro_acknowledged_at),
         canAcknowledge: room.status === "boss_intro" && me?.status === "active"
       },
+      finalTwoVote: isFinalTwoVote,
+      finalEligibleVoterCount: finalEligibleVoters.length,
+      isFinalVoteEligible: finalEligibleVoters.includes(session.userId),
       canVote: room.status === "voting" && Boolean(me) && eligibleVoters(members).includes(session.userId),
       hasVoted: Boolean((await supabase.from("mafioso_votes").select("id").eq("room_id", room.id).eq("round_number", room.round_number).eq("voter_id", session.userId).maybeSingle()).data)
     });
