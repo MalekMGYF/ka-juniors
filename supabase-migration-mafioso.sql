@@ -41,11 +41,13 @@ create table if not exists mafioso_rooms (
   code text not null unique check (char_length(code) between 4 and 10),
   name text not null default 'غرفة القضية',
   case_id uuid references mafioso_cases(id) on delete set null,
-  status text not null default 'waiting' check (status in ('waiting', 'role_reveal', 'discussion', 'voting', 'finished')),
+  status text not null default 'waiting' check (status in ('waiting', 'role_reveal', 'boss_intro', 'clue_reveal', 'discussion', 'vote_announcement', 'voting', 'vote_result', 'finished')),
   round_number integer not null default 1 check (round_number between 1 and 5),
   phase_ends_at timestamptz,
   current_clue_id uuid references mafioso_case_clues(id) on delete set null,
   final_winner text check (final_winner in ('mafia', 'innocent')),
+  last_eliminated_user_id uuid references users(id) on delete set null,
+  last_eliminated_alignment text check (last_eliminated_alignment in ('mafia', 'innocent')),
   created_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -86,6 +88,10 @@ create table if not exists mafioso_votes (
 -- لو كنت شغّلت نسخة سابقة من SQL كانت تسمح بأربع جولات فقط، حدّث القيود لتسمح بجولة الحسم الخامسة.
 alter table mafioso_rooms drop constraint if exists mafioso_rooms_round_number_check;
 alter table mafioso_rooms add constraint mafioso_rooms_round_number_check check (round_number between 1 and 5);
+alter table mafioso_rooms add column if not exists last_eliminated_user_id uuid references users(id) on delete set null;
+alter table mafioso_rooms add column if not exists last_eliminated_alignment text check (last_eliminated_alignment in ('mafia', 'innocent'));
+alter table mafioso_rooms drop constraint if exists mafioso_rooms_status_check;
+alter table mafioso_rooms add constraint mafioso_rooms_status_check check (status in ('waiting', 'role_reveal', 'boss_intro', 'clue_reveal', 'discussion', 'vote_announcement', 'voting', 'vote_result', 'finished'));
 alter table mafioso_messages drop constraint if exists mafioso_messages_round_number_check;
 alter table mafioso_messages add constraint mafioso_messages_round_number_check check (round_number between 1 and 5);
 alter table mafioso_votes drop constraint if exists mafioso_votes_round_number_check;
