@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import ShakeButton from "../../components/ShakeButton";
 import Onboarding from "../../components/Onboarding";
+import PlayerCard from "../../components/PlayerCard";
 import { getLevel, getLevelIndex, getNextLevel, LEVELS } from "../../lib/levels";
 import { getSchoolColor } from "../../lib/schools";
 
@@ -226,122 +227,36 @@ export default function ProfilePage() {
         <div className="card empty">حصل خطأ في تحميل البيانات</div>
       ) : (
         <>
-          <div
-            className="public-profile-hero ka-profile-hero"
-            style={{
-              background: `radial-gradient(circle at 50% 0%, ${level.color}22, var(--surface) 70%)`,
-              border: `1px solid ${level.color}44`
-            }}
-          >
-            <div
-              className={`public-profile-avatar-wrap ${isLegendary && !me.equippedFrameColor ? "frame-legendary" : ""}`}
-              style={{ border: `3px solid ${me.equippedFrameColor || level.color}`, cursor: "pointer" }}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <div className="avatar avatar-lg">
-                {me.avatar_url ? (
-                  <img
-                    src={me.avatar_url}
-                    alt={me.nickname}
-                    style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                  />
-                ) : (
-                  initial
-                )}
-              </div>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={handleFileChange}
-            />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
 
-            <div style={{ fontFamily: "Marhey, sans-serif", fontWeight: 700, fontSize: 22 }}>
-              {me.nickname}
-            </div>
-            {me.equippedTitle && (
-              <div style={{ fontSize: 13, color: "var(--gold)", fontWeight: 700, marginTop: 2 }}>
-                ✦ {me.equippedTitle}
-              </div>
-            )}
-            <div style={{ fontSize: 13, color: level.color, fontWeight: 700, marginTop: 4 }}>
-              {level.icon} {level.name}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                marginTop: 10,
-                fontSize: 13
-              }}
-            >
-              <span className="school-dot" style={{ background: schoolColor }} />
-              <span className="muted">{me.school}</span>
-            </div>
-
-            <button
-              className="btn btn-outline"
-              style={{ width: "auto", padding: "6px 14px", fontSize: 12, marginTop: 14 }}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? "جاري الرفع..." : "غيّر الصورة"}
-            </button>
-          </div>
+          <PlayerCard
+            nickname={me.nickname}
+            school={me.school}
+            initial={initial}
+            avatarUrl={me.avatar_url}
+            frameColor={me.equippedFrameColor}
+            equippedTitle={me.equippedTitle}
+            level={level}
+            totalPoints={totalPoints}
+            coins={me.coins}
+            points={me.points || 0}
+            dailyPoints={me.daily_points || 0}
+            nextLevel={nextLevel}
+            progressPct={progressPct}
+            isLegendary={isLegendary}
+            editable
+            uploading={uploading}
+            onAvatarClick={() => fileInputRef.current?.click()}
+          />
 
           {error && <div className="error-text">{error}</div>}
-
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--mint)" }}>
-                  {totalPoints}
-                </div>
-                <div className="profile-stat-label">إجمالي النقط ⭐</div>
-              </div>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--gold)" }}>
-                  {me.coins}
-                </div>
-                <div className="profile-stat-label">الكوينات 🪙</div>
-              </div>
-            </div>
-
-            {nextLevel ? (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-                  <span className="muted">باقي {nextLevel.minPoints - totalPoints} نقطة على {nextLevel.name}</span>
-                  <span className="muted">{progressPct}%</span>
-                </div>
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${progressPct}%`, background: nextLevel.color }} />
-                </div>
-              </>
-            ) : (
-              <div className="success-text" style={{ textAlign: "center", marginBottom: 0 }}>
-                🎉 وصلت لأعلى مستوى في الموقع
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--text)", fontSize: 15 }}>
-                  {me.points || 0}
-                </div>
-                <div className="profile-stat-label">نقاط خمن الطالب</div>
-              </div>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--text)", fontSize: 15 }}>
-                  {me.daily_points || 0}
-                </div>
-                <div className="profile-stat-label">نقاط السؤال اليومي</div>
-              </div>
-            </div>
-          </div>
+          <p className="ka-player-card-helper">اضغط على صورتك لتغييرها، والبطاقة دي هي الشكل اللي أصحابك هيشوفوه عنك.</p>
 
           <div className="profile-quick-links">
             <button type="button" className="btn btn-gold ka-vault-launch" onClick={() => setVaultOpen(true)}>

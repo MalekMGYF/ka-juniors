@@ -1,8 +1,10 @@
+// Style reminder: the public profile shares the collectible player-card identity—clear Arabic hierarchy, gold-and-mint signals, and an uncluttered mobile layout.
 "use client";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import PlayerCard from "../../../components/PlayerCard";
 import { getLevel, getLevelIndex, getNextLevel, LEVELS } from "../../../lib/levels";
 import { getSchoolColor } from "../../../lib/schools";
 import { instagramProfileUrl } from "../../../lib/instagram";
@@ -118,113 +120,28 @@ export default function PublicProfilePage() {
         <div className="card empty">الحساب ده مش موجود</div>
       ) : (
         <>
-          <div
-            className="public-profile-hero"
-            style={{
-              background: `radial-gradient(circle at 50% 0%, ${level.color}22, var(--surface) 70%)`,
-              border: `1px solid ${level.color}44`
-            }}
-          >
-            <div
-              className={`public-profile-avatar-wrap ${isLegendary && !profile.equippedFrameColor ? "frame-legendary" : ""}`}
-              style={{ border: `3px solid ${profile.equippedFrameColor || level.color}` }}
-            >
-              <div className="avatar avatar-lg">
-                {profile.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile.nickname}
-                    style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                  />
-                ) : (
-                  initial
-                )}
-              </div>
-            </div>
-
-            <div style={{ fontFamily: "Marhey, sans-serif", fontWeight: 700, fontSize: 22 }}>
-              {profile.nickname}
-            </div>
-            {profile.equippedTitle && (
-              <div style={{ fontSize: 13, color: "var(--gold)", fontWeight: 700, marginTop: 2 }}>
-                ✦ {profile.equippedTitle}
-              </div>
-            )}
-            <div style={{ fontSize: 13, color: level.color, fontWeight: 700, marginTop: 4 }}>
-              {level.icon} {level.name}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                marginTop: 10,
-                fontSize: 13
-              }}
-            >
-              <span className="school-dot" style={{ background: schoolColor }} />
-              <span className="muted">{profile.school}</span>
-            </div>
-
-            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              انضم في {formatJoinDate(profile.created_at)}
-            </div>
-
+          <PlayerCard
+            nickname={profile.nickname}
+            school={profile.school}
+            initial={initial}
+            avatarUrl={profile.avatar_url}
+            frameColor={profile.equippedFrameColor}
+            equippedTitle={profile.equippedTitle}
+            level={level}
+            totalPoints={totalPoints}
+            coins={profile.coins}
+            points={profile.points || 0}
+            dailyPoints={profile.daily_points || 0}
+            nextLevel={nextLevel}
+            progressPct={progressPct}
+            isLegendary={isLegendary}
+          />
+          <div className="ka-public-profile-meta">
+            <span>عضو من {formatJoinDate(profile.created_at)}</span>
             {profile.instagram_username && (
-              <a
-                href={instagramProfileUrl(profile.instagram_username)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-outline"
-                style={{ width: "auto", padding: "6px 16px", fontSize: 12, marginTop: 12, display: "inline-block" }}
-              >
+              <a href={instagramProfileUrl(profile.instagram_username)} target="_blank" rel="noopener noreferrer">
                 📸 @{profile.instagram_username}
               </a>
-            )}
-          </div>
-
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--mint)" }}>
-                  {totalPoints}
-                </div>
-                <div className="profile-stat-label">إجمالي النقط ⭐</div>
-              </div>
-              <div className="profile-stat">
-                <div className="profile-stat-value" style={{ color: "var(--gold)" }}>
-                  {profile.coins}
-                </div>
-                <div className="profile-stat-label">الكوينات 🪙</div>
-              </div>
-            </div>
-
-            {nextLevel ? (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 12,
-                    marginBottom: 6
-                  }}
-                >
-                  <span className="muted">باقي {nextLevel.minPoints - totalPoints} نقطة على {nextLevel.name}</span>
-                  <span className="muted">{progressPct}%</span>
-                </div>
-                <div className="progress-track">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${progressPct}%`, background: nextLevel.color }}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="success-text" style={{ textAlign: "center", marginBottom: 0 }}>
-                🎉 وصل لأعلى مستوى في الموقع
-              </div>
             )}
           </div>
 
