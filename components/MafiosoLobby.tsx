@@ -8,6 +8,7 @@ import { mafiosoChannelName } from "../lib/mafioso-channel";
 type Me = { nickname?: string } | null;
 type Player = { userId: string; nickname: string; isYou?: boolean; status?: string };
 type Difficulty = "any" | "easy" | "medium" | "hard";
+type DifficultyCounts = { easy: number; medium: number; hard: number };
 type OpenRoom = { code: string; hostNickname: string; playerCount: number; maxPlayers: 4 | 5; seatsLeft: number; difficultyPreference?: Difficulty };
 type Props = { me: Me; onStarted: (code: string) => void };
 
@@ -23,7 +24,10 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   const [openRoomsLoading, setOpenRoomsLoading] = useState(true);
   const [createPlayerCount, setCreatePlayerCount] = useState<4 | 5>(5);
   const [createDifficulty, setCreateDifficulty] = useState<Difficulty>("any");
+  const [difficultyCounts, setDifficultyCounts] = useState<Record<4 | 5, DifficultyCounts>>({ 4: { easy: 0, medium: 0, hard: 0 }, 5: { easy: 0, medium: 0, hard: 0 } });
   const roomPlayerCount = room?.playerCount || 5;
+  const selectedDifficultyCounts = difficultyCounts[createPlayerCount];
+  const hasSelectedDifficultyCases = createDifficulty === "any" || selectedDifficultyCounts[createDifficulty] > 0;
   const seats = useMemo(() => [...[...players].sort((first, second) => (first.status === "left" ? 1 : 0) - (second.status === "left" ? 1 : 0)), ...Array.from({ length: roomPlayerCount }, () => null as Player | null)].slice(0, roomPlayerCount), [players, roomPlayerCount]);
   const activePlayersCount = players.filter((player) => player.status !== "left").length;
   const lastLeftPlayer = [...players].reverse().find((player) => player.status === "left");
@@ -53,7 +57,10 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
     setOpenRoomsLoading(true);
     const res = await fetch("/api/mafioso?openRooms=1", { cache: "no-store" }).catch(() => null);
     const data = res ? await res.json().catch(() => ({})) : {};
-    if (res?.ok) setOpenRooms(data.rooms || []);
+    if (res?.ok) {
+      setOpenRooms(data.rooms || []);
+      if (data.difficultyCounts?.[4] && data.difficultyCounts?.[5]) setDifficultyCounts(data.difficultyCounts);
+    }
     setOpenRoomsLoading(false);
   }
 
@@ -76,6 +83,10 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
   }, [room]);
 
   async function createRoom() {
+    if (!hasSelectedDifficultyCases) {
+      setError("المستوى ده مفيهوش قضايا مناسبة لعدد اللاعبين المختار. اختار مستوى تاني أو أي صعوبة.");
+      return;
+    }
     const data = await post("create_room", undefined, { playerCount: createPlayerCount, difficultyPreference: createDifficulty });
     if (!data?.code) return;
     setRoom({ code: data.code, isHost: true, playerCount: data.playerCount === 4 ? 4 : 5 });
@@ -124,7 +135,7 @@ export default function MafiosoLobby({ me, onStarted }: Props) {
 
   return <section className="mafioso-lobby-shell"><div className="mafioso-lobby mafioso-home">
     <header className="mafioso-lobby-header"><div><span>✦ مافيوسو أونلاين</span><h1>مين فينا بيكدب؟</h1><p>اختاروا روم 4 أو 5 لاعبين، وكل وضع له قضايا وأدلة مختلفة.</p></div><div className="mafioso-lobby-lamp">🕵️</div></header>
-    <div className="mafioso-lobby-grid"><article><i>✦</i><h2>أنشئ قضية جديدة</h2><p>اختار عدد اللاعبين والصعوبة، وخد كود روم خاص تبعته لأصحابك.</p><div className="mafioso-room-mode-picker"><button type="button" className={createPlayerCount === 4 ? "selected" : ""} onClick={() => setCreatePlayerCount(4)}><b>4 لاعبين</b><small>1 مافيوسو · 3 أدلة</small></button><button type="button" className={createPlayerCount === 5 ? "selected" : ""} onClick={() => setCreatePlayerCount(5)}><b>5 لاعبين</b><small>2 مافيوسو · 4 أدلة</small></button></div><div className="mafioso-difficulty-picker mafioso-lobby-difficulty"><button type="button" className={createDifficulty === "any" ? "selected any" : ""} onClick={() => setCreateDifficulty("any")}>أي صعوبة</button><button type="button" className={createDifficulty === "easy" ? "selected easy" : ""} onClick={() => setCreateDifficulty("easy")}>سهل</button><button type="button" className={createDifficulty === "medium" ? "selected medium" : ""} onClick={() => setCreateDifficulty("medium")}>متوسط</button><button type="button" className={createDifficulty === "hard" ? "selected hard" : ""} onClick={() => setCreateDifficulty("hard")}>صعب</button></div><button className="mafioso-primary" disabled={busy} onClick={createRoom}>{busy ? "بنجهز الروم…" : `إنشاء روم ${createPlayerCount} لاعبين`}</button></article><article className="mafioso-join"><i>⌁</i><h2>ادخل روم موجودة</h2><p>معاك كود من صاحبك؟ اكتبه وادخل على طول.</p>{mode === "join" && <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} placeholder="MF-ABCD" maxLength={7} />}<button className="mafioso-secondary" disabled={busy} onClick={() => mode === "join" ? void joinRoom() : setMode("join")}>{mode === "join" ? "دخول الروم ←" : "معايا كود روم"}</button></article></div>
+    <div className="mafioso-lobby-grid"><article><i>✦</i><h2>أنشئ قضية جديدة</h2><p>اختار عدد اللاعبين والصعوبة، وخد كود روم خاص تبعته لأصحابك.</p><div className="mafioso-room-mode-picker"><button type="button" className={createPlayerCount === 4 ? "selected" : ""} onClick={() => setCreatePlayerCount(4)}><b>4 لاعبين</b><small>1 مافيوسو · 3 أدلة</small></button><button type="button" className={createPlayerCount === 5 ? "selected" : ""} onClick={() => setCreatePlayerCount(5)}><b>5 لاعبين</b><small>2 مافيوسو · 4 أدلة</small></button></div><div className="mafioso-difficulty-picker mafioso-lobby-difficulty"><button type="button" className={createDifficulty === "any" ? "selected any" : ""} onClick={() => setCreateDifficulty("any")}>أي صعوبة <small>المتاح</small></button><button type="button" disabled={selectedDifficultyCounts.easy === 0} className={`${createDifficulty === "easy" ? "selected easy" : ""}${selectedDifficultyCounts.easy === 0 ? " unavailable" : ""}`} onClick={() => setCreateDifficulty("easy")}>سهل <small>{selectedDifficultyCounts.easy} قضية</small></button><button type="button" disabled={selectedDifficultyCounts.medium === 0} className={`${createDifficulty === "medium" ? "selected medium" : ""}${selectedDifficultyCounts.medium === 0 ? " unavailable" : ""}`} onClick={() => setCreateDifficulty("medium")}>متوسط <small>{selectedDifficultyCounts.medium} قضية</small></button><button type="button" disabled={selectedDifficultyCounts.hard === 0} className={`${createDifficulty === "hard" ? "selected hard" : ""}${selectedDifficultyCounts.hard === 0 ? " unavailable" : ""}`} onClick={() => setCreateDifficulty("hard")}>صعب <small>{selectedDifficultyCounts.hard} قضية</small></button></div><button className="mafioso-primary" disabled={busy || !hasSelectedDifficultyCases} onClick={createRoom}>{busy ? "بنجهز الروم…" : !hasSelectedDifficultyCases ? "مفيش قضايا بالمستوى ده" : `إنشاء روم ${createPlayerCount} لاعبين`}</button></article><article className="mafioso-join"><i>⌁</i><h2>ادخل روم موجودة</h2><p>معاك كود من صاحبك؟ اكتبه وادخل على طول.</p>{mode === "join" && <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} placeholder="MF-ABCD" maxLength={7} />}<button className="mafioso-secondary" disabled={busy} onClick={() => mode === "join" ? void joinRoom() : setMode("join")}>{mode === "join" ? "دخول الروم ←" : "معايا كود روم"}</button></article></div>
     <div className="mafioso-rules"><span>4 لاعبين: 1 مافيوسو + 3 أدلة</span><span>5 لاعبين: 2 مافيوسو + 4 أدلة</span><span>تصويت واحد في كل جولة</span></div>
     <section className="mafioso-open-rooms">
       <header><div><span>متاح دلوقتي</span><h2>رومات مستنية لاعبين</h2><p>اختار روم جاهزة بدل ما تستنى كود من صاحبك.</p></div><button type="button" onClick={() => void loadOpenRooms()} disabled={openRoomsLoading || busy} aria-label="تحديث الرومات">↻</button></header>

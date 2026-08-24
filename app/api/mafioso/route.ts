@@ -249,17 +249,30 @@ export async function GET(request: NextRequest) {
   if (wantsOpenRooms) {
     try {
       const supabase = supabaseServer();
-      const { data: waitingRooms, error: roomsError } = await supabase.from("mafioso_rooms").select("id, code, created_by, created_at, player_count, difficulty_preference").eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
+      const [{ data: waitingRooms, error: roomsError }, { data: activeCases, error: casesError }] = await Promise.all([
+        supabase.from("mafioso_rooms").select("id, code, created_by, created_at, player_count, difficulty_preference").eq("status", "waiting").order("created_at", { ascending: false }).limit(30),
+        supabase.from("mafioso_cases").select("player_count, difficulty").eq("is_active", true)
+      ]);
       if (roomsError) throw roomsError;
+      if (casesError) throw casesError;
+      const difficultyCounts = {
+        4: { easy: 0, medium: 0, hard: 0 },
+        5: { easy: 0, medium: 0, hard: 0 }
+      };
+      for (const item of activeCases || []) {
+        const playerCount = playerCountFor(item.player_count);
+        const difficulty = difficultyFor(item.difficulty);
+        if (difficulty !== "any") difficultyCounts[playerCount][difficulty] += 1;
+      }
       const roomIds = (waitingRooms || []).map((room) => room.id);
-      if (!roomIds.length) return noStoreJson({ rooms: [] });
+      if (!roomIds.length) return noStoreJson({ rooms: [], difficultyCounts });
       const { data: roomPlayers, error: playersError } = await supabase.from("mafioso_room_players").select("room_id, user_id, is_connected, status, users(nickname)").in("room_id", roomIds);
       if (playersError) throw playersError;
       const connectedByRoom = new Map<string, any[]>();
       for (const player of roomPlayers || []) if (player.is_connected && player.status === "active") connectedByRoom.set(player.room_id, [...(connectedByRoom.get(player.room_id) || []), player]);
       const emptyRoomIds = roomIds.filter((roomId) => !(connectedByRoom.get(roomId) || []).length);
       if (emptyRoomIds.length) await supabase.from("mafioso_rooms").update({ status: "finished", final_winner: null, phase_ends_at: new Date().toISOString() }).in("id", emptyRoomIds).eq("status", "waiting");
-      return noStoreJson({ rooms: (waitingRooms || []).map((room) => {
+      return noStoreJson({ difficultyCounts, rooms: (waitingRooms || []).map((room) => {
         const connected = connectedByRoom.get(room.id) || [];
         const host = connected.find((player) => player.user_id === room.created_by);
         const maxPlayers = playerCountFor(room.player_count);
@@ -392,6 +405,11 @@ export async function POST(request: NextRequest) {
       if (!withinRateLimit(session.userId, action)) return noStoreJson({ error: "استنى شوية قبل إنشاء رومات جديدة" }, { status: 429 });
       const requestedPlayerCount = playerCountFor(body?.playerCount);
       const difficultyPreference = difficultyFor(body?.difficultyPreference);
+      let availabilityQuery = supabase.from("mafioso_cases").select("id", { count: "exact", head: true }).eq("is_active", true).eq("player_count", requestedPlayerCount);
+      if (difficultyPreference !== "any") availabilityQuery = availabilityQuery.eq("difficulty", difficultyPreference);
+      const { count: availableCaseCount, error: availabilityError } = await availabilityQuery;
+      if (availabilityError) return unavailable(availabilityError);
+      if (!availableCaseCount) return noStoreJson({ error: "مفيش قضية مفعّلة بالمستوى ده لعدد اللاعبين المختار. اختار أي صعوبة أو مستوى تاني." }, { status: 409 });
       let room: any = null;
       for (let attempt = 0; attempt < 4 && !room; attempt += 1) {
         const created = await supabase.from("mafioso_rooms").insert({ code: roomCode(), created_by: session.userId, name: "غرفة القضية", status: "waiting", player_count: requestedPlayerCount, difficulty_preference: difficultyPreference }).select("id, code, player_count").maybeSingle();
