@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KA Juniors</string>
+    <string name="title_activity_main">KA Juniors</string>
+    <string name="package_name">com.kajuniors.app</string>
+    <string name="custom_url_scheme">com.kajuniors.app</string>
+</resources>
